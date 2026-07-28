@@ -1,0 +1,15 @@
+###
+POST http://localhost:8080/cars
+Content-Type: application/json
+
+{
+  "brand": "bmw",
+  "passengers": [
+    { "name": "Jan" },
+    { "name": "Piet" },
+    { "name": "Kees" }
+  ]
+}
+
+###
+GET http://localhost:8080/cars
