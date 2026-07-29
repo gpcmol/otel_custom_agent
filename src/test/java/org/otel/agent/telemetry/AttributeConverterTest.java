@@ -33,4 +33,19 @@ class AttributeConverterTest {
     values[0] = 9;
     assertEquals(List.of(1L, 2L), converted.value());
   }
+
+  @Test
+  void rejectsMixedTypeArrays() {
+    assertNull(converter.convert(new Object[] {"x", 1}));
+  }
+
+  @Test
+  void emptyArrayKeepsComponentType() {
+    var converted = converter.convert(new int[0]);
+    assertEquals(List.of(), converted.value());
+    assertEquals(Long.class, converted.componentType());
+
+    var emptyStrings = converter.convert(new String[0]);
+    assertEquals(String.class, emptyStrings.componentType());
+  }
 }

@@ -37,14 +37,19 @@ public final class AttributeConverter {
 
   private AttributeValue convertArray(final Object value) {
     final List<Object> values = new ArrayList<>();
+    Class<?> type = null;
     for (int i = 0; i < Array.getLength(value); i++) {
       final Object element = Array.get(value, i);
       if (element == null) continue;
       final Object converted = convertScalar(element);
       if (converted == null) return null;
+      if (type == null) type = converted.getClass();
+      if (type != converted.getClass()) return null;
       values.add(converted);
     }
-    return new AttributeValue(List.copyOf(values));
+    return new AttributeValue(
+        List.copyOf(values),
+        type != null ? type : emptyComponentType(value.getClass().getComponentType()));
   }
 
   private AttributeValue convertIterable(final Iterable<?> iterable) {
@@ -58,7 +63,24 @@ public final class AttributeConverter {
       if (type != converted.getClass()) return null;
       values.add(converted);
     }
-    return new AttributeValue(List.copyOf(values));
+    return new AttributeValue(List.copyOf(values), type);
+  }
+
+  private static Class<?> emptyComponentType(final Class<?> componentType) {
+    if (componentType == String.class
+        || componentType == Character.class
+        || componentType == char.class
+        || Enum.class.isAssignableFrom(componentType)) return String.class;
+    if (componentType == Boolean.class || componentType == boolean.class) return Boolean.class;
+    if (componentType == Float.class
+        || componentType == float.class
+        || componentType == Double.class
+        || componentType == double.class
+        || componentType == BigDecimal.class) return Double.class;
+    if (componentType.isPrimitive() || Number.class.isAssignableFrom(componentType)) {
+      return Long.class;
+    }
+    return null;
   }
 
   private Object convertScalar(final Object value) {

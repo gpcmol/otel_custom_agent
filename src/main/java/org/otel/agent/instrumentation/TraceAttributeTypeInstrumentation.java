@@ -25,9 +25,9 @@ final class TraceAttributeTypeInstrumentation implements TypeInstrumentation {
     return new ElementMatcher.Junction.AbstractBase<>() {
       @Override
       public boolean matches(final TypeDescription type) {
+        // hasSuperType also matches the type itself.
         return RuntimeBridge.rootClassNames().stream()
-            .anyMatch(
-                name -> type.getName().equals(name) || hasSuperType(named(name)).matches(type));
+            .anyMatch(name -> hasSuperType(named(name)).matches(type));
       }
     };
   }

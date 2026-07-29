@@ -43,6 +43,11 @@ public final class ValueResolver {
       final Object value = resolveValue(element, segments, position);
       if (value instanceof Collection<?> nested) {
         for (final Object nestedValue : nested) if (nestedValue != null) values.add(nestedValue);
+      } else if (value != null && value.getClass().isArray()) {
+        for (int i = 0; i < Array.getLength(value); i++) {
+          final Object nestedValue = Array.get(value, i);
+          if (nestedValue != null) values.add(nestedValue);
+        }
       } else if (value != null) values.add(value);
     }
     return values;

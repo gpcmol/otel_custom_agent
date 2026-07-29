@@ -12,11 +12,16 @@ public final class SpanWriter {
     else if (value instanceof Boolean flag) span.setAttribute(key, flag);
     else if (value instanceof Long number) span.setAttribute(key, number);
     else if (value instanceof Double number) span.setAttribute(key, number);
-    else if (value instanceof List<?> values) writeArray(span, key, values);
+    else if (value instanceof List<?> values)
+      writeArray(span, key, values, attribute.componentType());
   }
 
-  private void writeArray(final Span span, final String key, final List<?> values) {
-    if (values.isEmpty()) return;
+  private void writeArray(
+      final Span span, final String key, final List<?> values, final Class<?> componentType) {
+    if (values.isEmpty()) {
+      writeEmptyArray(span, key, componentType);
+      return;
+    }
     final Object first = values.getFirst();
     if (first instanceof String) span.setAttribute(AttributeKey.stringArrayKey(key), cast(values));
     else if (first instanceof Boolean)
@@ -24,6 +29,19 @@ public final class SpanWriter {
     else if (first instanceof Long) span.setAttribute(AttributeKey.longArrayKey(key), cast(values));
     else if (first instanceof Double)
       span.setAttribute(AttributeKey.doubleArrayKey(key), cast(values));
+  }
+
+  private void writeEmptyArray(final Span span, final String key, final Class<?> componentType) {
+    if (componentType == String.class) {
+      span.setAttribute(AttributeKey.stringArrayKey(key), List.of());
+    } else if (componentType == Boolean.class) {
+      span.setAttribute(AttributeKey.booleanArrayKey(key), List.of());
+    } else if (componentType == Long.class) {
+      span.setAttribute(AttributeKey.longArrayKey(key), List.of());
+    } else if (componentType == Double.class) {
+      span.setAttribute(AttributeKey.doubleArrayKey(key), List.of());
+    }
+    // Unknown element type: nothing safe to write.
   }
 
   @SuppressWarnings("unchecked")

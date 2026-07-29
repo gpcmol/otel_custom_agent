@@ -1,5 +1,6 @@
 package org.otel.agent.bridge;
 
+import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,33 +24,46 @@ public final class RuntimeBridge {
   private static final AtomicReference<Set<String>> ROOT_NAMES = new AtomicReference<>(Set.of());
   private static final AtomicReference<String> ACTIVE_XML = new AtomicReference<>();
   private static final AtomicBoolean WEBSERVER_STARTED = new AtomicBoolean(false);
+  private static volatile ClassLoader memoLoader;
+  private static volatile RuntimeState memoState = DISABLED;
 
   private RuntimeBridge() {}
 
   public static synchronized void publish(
       final ClassLoader loader, final CompiledConfiguration configuration) {
-    STATES.put(loader, RuntimeState.enabled(configuration, new RuleIndex(configuration)));
+    publishLocked(loader, configuration);
+  }
+
+  public static synchronized void publish(
+      final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
+    publishLocked(loader, configuration);
+    ACTIVE_XML.set(xml);
+  }
+
+  private static void publishLocked(
+      final ClassLoader loader, final CompiledConfiguration configuration) {
+    final RuntimeState state = RuntimeState.enabled(configuration, new RuleIndex(configuration));
+    STATES.put(loader, state);
+    memoLoader = loader;
+    memoState = state;
     ROOT_NAMES.set(
         configuration.dynamicRules().stream()
             .map(DynamicAttributeRule::rootClassName)
             .collect(Collectors.toUnmodifiableSet()));
   }
 
-  public static void publish(
-      final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
-    publish(loader, configuration);
-    ACTIVE_XML.set(xml);
-  }
-
   public static void initialize(final ClassLoader applicationLoader) {
     synchronized (RuntimeBridge.class) {
       if (STATES.containsKey(applicationLoader)) return;
     }
-    startWebserverIfNeeded();
     final String encoded = System.getenv("OTEL_CUSTOM_AGENT_CONFIG");
     if (encoded == null) {
+      synchronized (RuntimeBridge.class) {
+        STATES.putIfAbsent(applicationLoader, DISABLED);
+      }
       return;
     }
+    startWebserverIfNeeded();
     try {
       final CompiledConfiguration configuration =
           new ConfigurationParser().parse(encoded, applicationLoader);
@@ -76,21 +90,26 @@ public final class RuntimeBridge {
     for (final ClassLoader loader : loaders) {
       try {
         final CompiledConfiguration configuration = new ConfigurationParser().parseXml(xml, loader);
-        publish(loader, configuration);
-        forwardReloadToApplicationClassloader(xml, loader);
+        if (!forwardReloadToApplicationClassloader(xml, loader)) {
+          failures.add("reload failed in application classloader");
+          continue;
+        }
+        publish(loader, configuration, xml);
         updated++;
         staticCount = configuration.staticRules().size();
         dynamicCount = configuration.dynamicRules().size();
       } catch (final ConfigurationException exception) {
-        failures.add(exception.getMessage());
+        failures.add(category(exception));
       }
     }
 
-    if (updated > 0) {
-      ACTIVE_XML.set(xml);
-    }
-
     return new ReloadResult(updated, staticCount, dynamicCount, failures);
+  }
+
+  private static String category(final ConfigurationException exception) {
+    final String message = exception.getMessage();
+    final int colon = message.indexOf(':');
+    return colon < 0 ? message : message.substring(0, colon);
   }
 
   public static String activeXml() {
@@ -107,12 +126,18 @@ public final class RuntimeBridge {
     }
   }
 
-  private static void forwardReloadToApplicationClassloader(final String xml, final ClassLoader loader) {
+  private static boolean forwardReloadToApplicationClassloader(
+      final String xml, final ClassLoader loader) {
     try {
-      final Class<?> enrichmentRuntime = Class.forName("org.otel.agent.runtime.EnrichmentRuntime", true, loader);
+      final Class<?> enrichmentRuntime =
+          Class.forName("org.otel.agent.runtime.EnrichmentRuntime", true, loader);
       enrichmentRuntime.getMethod("reloadFromBridge", String.class).invoke(null, xml);
-    } catch (final ClassNotFoundException | NoSuchMethodException | IllegalAccessException |
-                 java.lang.reflect.InvocationTargetException ignored) {
+      return true;
+    } catch (final InvocationTargetException reloadFailure) {
+      return false;
+    } catch (final ReflectiveOperationException notInjected) {
+      // The runtime is not loaded in this classloader, so there is nothing to update there.
+      return true;
     }
   }
 
@@ -137,8 +162,14 @@ public final class RuntimeBridge {
                 .count());
   }
 
-  public static synchronized RuntimeState state(final ClassLoader loader) {
-    return STATES.getOrDefault(loader, DISABLED);
+  public static RuntimeState state(final ClassLoader loader) {
+    if (loader != null && loader == memoLoader) return memoState;
+    synchronized (RuntimeBridge.class) {
+      final RuntimeState state = STATES.getOrDefault(loader, DISABLED);
+      memoLoader = loader;
+      memoState = state;
+      return state;
+    }
   }
 
   public static Set<String> rootClassNames() {
@@ -151,6 +182,8 @@ public final class RuntimeBridge {
     synchronized (RuntimeBridge.class) {
       STATES.clear();
     }
+    memoLoader = null;
+    memoState = DISABLED;
     ROOT_NAMES.set(Set.of());
     ACTIVE_XML.set(null);
   }

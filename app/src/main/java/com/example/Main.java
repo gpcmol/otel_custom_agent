@@ -15,6 +15,7 @@ public class Main {
 
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final List<Car> garage = new CopyOnWriteArrayList<>();
+    private static final Garage demoGarage = new Garage(List.of(new Customer("Jan", "Amsterdam")));
 
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
@@ -31,6 +32,7 @@ public class Main {
 
             if ("GET".equals(method)) {
                 // GET /cars → lijst van alle cars
+                demoGarage.getCustomers();
                 final String json = mapper.writeValueAsString(garage);
                 send(exchange, 200, "application/json", json);
 

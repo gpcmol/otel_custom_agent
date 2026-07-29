@@ -178,6 +178,41 @@ class ConfigWebserverTest {
   }
 
   @Test
+  void postConfigAcceptsUtf8MultibyteBody() throws IOException {
+    publishConfig("cars");
+    final String xml = configXml("café→trucks");
+
+    final HttpResponse response = sendPost("/config", xml);
+
+    assertEquals(200, response.status());
+    assertEquals(
+        "café→trucks",
+        RuntimeBridge.state(loader).configuration().staticRules().getFirst().value());
+  }
+
+  @Test
+  void postConfigWithWrongContentTypeReturns415() throws IOException {
+    publishConfig("cars");
+
+    final HttpURLConnection connection =
+        (HttpURLConnection) new URL(BASE_URL + "/config").openConnection();
+    connection.setRequestMethod("POST");
+    connection.setRequestProperty("Content-Type", "application/json");
+    connection.setDoOutput(true);
+    try (final OutputStream output = connection.getOutputStream()) {
+      output.write(configXml("trucks").getBytes(StandardCharsets.UTF_8));
+    }
+
+    assertEquals(415, connection.getResponseCode());
+  }
+
+  @Test
+  void postToRootReturns404() throws IOException {
+    final HttpResponse response = sendPost("/", configXml("trucks"));
+    assertEquals(404, response.status());
+  }
+
+  @Test
   void nonGetToCurrentReturns405() throws IOException {
     final HttpResponse response = sendPost("/config/current", "");
     assertEquals(405, response.status());
@@ -231,19 +266,21 @@ class ConfigWebserverTest {
 
     for (int i = 0; i < threads; i++) {
       final String team = i % 2 == 0 ? "cars" : "bikes";
-      workers.add(new Thread(() -> {
-        try {
-          for (int j = 0; j < 20; j++) {
-            RuntimeBridge.reload(configXml(team));
-            final RuntimeState state = RuntimeBridge.state(loader);
-            if (!state.enabled()) {
-              errors.add(new AssertionError("state not enabled after reload"));
-            }
-          }
-        } catch (final Throwable t) {
-          errors.add(t);
-        }
-      }));
+      workers.add(
+          new Thread(
+              () -> {
+                try {
+                  for (int j = 0; j < 20; j++) {
+                    RuntimeBridge.reload(configXml(team));
+                    final RuntimeState state = RuntimeBridge.state(loader);
+                    if (!state.enabled()) {
+                      errors.add(new AssertionError("state not enabled after reload"));
+                    }
+                  }
+                } catch (final Throwable t) {
+                  errors.add(t);
+                }
+              }));
     }
     for (final Thread t : workers) {
       t.start();
@@ -273,7 +310,8 @@ class ConfigWebserverTest {
     assertEquals(400, response.status());
     assertTrue(response.body().contains("Configuration rejected"));
 
-    assertEquals(originalValue,
+    assertEquals(
+        originalValue,
         RuntimeBridge.state(loader).configuration().staticRules().getFirst().value());
   }
 

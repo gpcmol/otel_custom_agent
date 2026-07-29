@@ -1,8 +1,8 @@
 package org.otel.agent.webserver;
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -15,8 +15,10 @@ import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
 
 public final class ConfigWebserver {
+  // ponytail: test hook; the spec port is 14317
   static int port = Integer.getInteger("otel.config.webserver.port", 14317);
   private static final String LOOPBACK = "127.0.0.1";
+  private static final int MAX_BODY_BYTES = 1_048_576;
 
   static volatile Supplier<String> startupConfigSupplier =
       () -> System.getenv("OTEL_CUSTOM_AGENT_CONFIG");
@@ -51,20 +53,19 @@ public final class ConfigWebserver {
   }
 
   private static void acceptLoop() {
-    while (!Thread.currentThread().isInterrupted()) {
+    while (true) {
       try (final Socket client = serverSocket.accept()) {
         handleClient(client);
       } catch (final IOException ignored) {
-        return;
+        if (serverSocket == null || serverSocket.isClosed()) return;
       }
     }
   }
 
   private static void handleClient(final Socket client) throws IOException {
     client.setSoTimeout(5000);
-    final BufferedReader reader =
-        new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
-    final String requestLine = reader.readLine();
+    final InputStream input = new BufferedInputStream(client.getInputStream());
+    final String requestLine = readLine(input);
     if (requestLine == null) return;
 
     final String[] requestParts = requestLine.split(" ", 3);
@@ -75,42 +76,63 @@ public final class ConfigWebserver {
     final String method = requestParts[0];
     final String path = requestParts[1];
 
-    final int contentLength = readHeaders(reader);
-    final String body = readBody(reader, contentLength);
-
-    route(client, method, path, body);
-  }
-
-  private static int readHeaders(final BufferedReader reader) throws IOException {
     int contentLength = 0;
+    String contentType = null;
     String line;
-    while ((line = reader.readLine()) != null && !line.isEmpty()) {
+    while ((line = readLine(input)) != null && !line.isEmpty()) {
       final String lower = line.toLowerCase();
       if (lower.startsWith("content-length:")) {
         try {
           contentLength = Integer.parseInt(lower.substring(15).trim());
         } catch (final NumberFormatException ignored) {
         }
+      } else if (lower.startsWith("content-type:")) {
+        contentType = lower.substring(13).trim();
       }
     }
-    return contentLength;
+    if (contentLength > MAX_BODY_BYTES) {
+      sendResponse(client, 400, "text/plain", "Request body too large");
+      return;
+    }
+    final String body = readBody(input, contentLength);
+
+    route(client, method, path, contentType, body);
   }
 
-  private static String readBody(final BufferedReader reader, final int contentLength)
+  private static String readLine(final InputStream input) throws IOException {
+    final StringBuilder line = new StringBuilder();
+    int current;
+    while ((current = input.read()) >= 0) {
+      if (current == '\n') {
+        if (!line.isEmpty() && line.charAt(line.length() - 1) == '\r') {
+          line.setLength(line.length() - 1);
+        }
+        return line.toString();
+      }
+      line.append((char) current);
+    }
+    return line.isEmpty() ? null : line.toString();
+  }
+
+  private static String readBody(final InputStream input, final int contentLength)
       throws IOException {
     if (contentLength <= 0) return "";
-    final char[] buffer = new char[contentLength];
+    final byte[] buffer = new byte[contentLength];
     int read = 0;
     while (read < contentLength) {
-      final int count = reader.read(buffer, read, contentLength - read);
+      final int count = input.read(buffer, read, contentLength - read);
       if (count < 0) break;
       read += count;
     }
-    return new String(buffer, 0, read);
+    return new String(buffer, 0, read, StandardCharsets.UTF_8);
   }
 
   private static void route(
-      final Socket client, final String method, final String path, final String body)
+      final Socket client,
+      final String method,
+      final String path,
+      final String contentType,
+      final String body)
       throws IOException {
     if ("GET".equals(method) && "/".equals(path)) {
       sendResponse(client, 200, "text/html; charset=utf-8", ConfigPage.html());
@@ -124,8 +146,12 @@ public final class ConfigWebserver {
     } else if ("GET".equals(method) && "/config/original".equals(path)) {
       handleOriginal(client);
     } else if ("POST".equals(method) && "/config".equals(path)) {
-      handleReload(client, body);
-    } else if ("POST".equals(method) && "/config".startsWith(path)) {
+      if (contentType != null && !contentType.startsWith("text/xml")) {
+        sendResponse(client, 415, "text/plain", "Unsupported Media Type");
+      } else {
+        handleReload(client, body);
+      }
+    } else if ("POST".equals(method) && path.startsWith("/config")) {
       sendResponse(client, 405, "text/plain", "Method Not Allowed");
     } else if (path.startsWith("/config/current") || path.startsWith("/config/original")) {
       sendResponse(client, 405, "text/plain", "Method Not Allowed");
@@ -142,9 +168,11 @@ public final class ConfigWebserver {
     }
     try {
       final byte[] decoded = ConfigurationParser.decode(encoded);
-      sendResponse(client, 200, "text/xml; charset=utf-8", new String(decoded, StandardCharsets.UTF_8));
+      sendResponse(
+          client, 200, "text/xml; charset=utf-8", new String(decoded, StandardCharsets.UTF_8));
     } catch (final ConfigurationException exception) {
-      sendResponse(client, 500, "text/plain", "Invalid startup configuration: " + exception.getMessage());
+      sendResponse(
+          client, 500, "text/plain", "Invalid startup configuration: " + exception.getMessage());
     }
   }
 
@@ -173,7 +201,12 @@ public final class ConfigWebserver {
       throws IOException {
     final byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
     final StringBuilder header = new StringBuilder();
-    header.append("HTTP/1.1 ").append(status).append(" ").append(reasonPhrase(status)).append("\r\n");
+    header
+        .append("HTTP/1.1 ")
+        .append(status)
+        .append(" ")
+        .append(reasonPhrase(status))
+        .append("\r\n");
     header.append("Content-Type: ").append(contentType).append("\r\n");
     header.append("Content-Length: ").append(bytes.length).append("\r\n");
     header.append("Connection: close\r\n");
@@ -190,6 +223,7 @@ public final class ConfigWebserver {
       case 400 -> "Bad Request";
       case 404 -> "Not Found";
       case 405 -> "Method Not Allowed";
+      case 415 -> "Unsupported Media Type";
       case 500 -> "Internal Server Error";
       default -> "Unknown";
     };

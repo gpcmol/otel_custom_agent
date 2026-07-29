@@ -39,8 +39,19 @@ class ValueResolverTest {
     assertNull(resolver.resolve(new PrivateModel(), List.of(new PropertySegment("value"))));
   }
 
+  @Test
+  void booleanIsGetterIsUsed() {
+    assertEquals(true, resolver.resolve(new Model(), List.of(new PropertySegment("enabled"))));
+  }
+
+  @Test
+  void nonBooleanIsGetterFallsBackToField() {
+    assertEquals("field-team", resolver.resolve(new Model(), List.of(new PropertySegment("team"))));
+  }
+
   public static final class Model {
     public String brand = "field";
+    public String team = "field-team";
     public List<Passenger> passengers = List.of(new Passenger("A"), new Passenger("B"));
 
     public String getBrand() {
@@ -49,6 +60,14 @@ class ValueResolverTest {
 
     public List<Passenger> getPassengers() {
       return passengers;
+    }
+
+    public boolean isEnabled() {
+      return true;
+    }
+
+    public String isTeam() {
+      return "not-a-boolean-getter";
     }
   }
 

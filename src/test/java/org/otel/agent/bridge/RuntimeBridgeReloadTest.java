@@ -65,6 +65,16 @@ class RuntimeBridgeReloadTest {
   }
 
   @Test
+  void reloadFailureMessageDoesNotEchoSubmittedXml() {
+    publishStartupConfig("cars");
+
+    final ReloadResult result = RuntimeBridge.reload("<configuration><bogus/></configuration>");
+
+    assertFalse(result.succeeded());
+    assertEquals("unknown XML element", result.failures().getFirst());
+  }
+
+  @Test
   void reloadDoesNotDiscoverUnregisteredClassloaders() {
     final ReloadResult result = RuntimeBridge.reload(configXml("trucks"));
     assertEquals(0, result.updatedClassloaders());

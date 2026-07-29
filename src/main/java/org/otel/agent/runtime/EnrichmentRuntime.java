@@ -6,11 +6,15 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.bridge.RuntimeState;
+import org.otel.agent.config.model.CompiledConfiguration;
 import org.otel.agent.config.model.DynamicAttributeRule;
 import org.otel.agent.config.model.StaticAttributeRule;
+import org.otel.agent.config.parser.ConfigurationException;
+import org.otel.agent.config.parser.ConfigurationParser;
 import org.otel.agent.runtime.accessor.AccessorCache;
 import org.otel.agent.runtime.resolver.ValueResolver;
 import org.otel.agent.telemetry.AttributeConverter;
+import org.otel.agent.telemetry.AttributeValue;
 import org.otel.agent.telemetry.SpanWriter;
 
 public final class EnrichmentRuntime {
@@ -18,6 +22,7 @@ public final class EnrichmentRuntime {
   private static final AttributeConverter CONVERTER = new AttributeConverter();
   private static final SpanWriter WRITER = new SpanWriter();
   private static final ThreadLocal<Boolean> ENRICHING = ThreadLocal.withInitial(() -> false);
+  private static volatile boolean initialized;
 
   private EnrichmentRuntime() {}
 
@@ -27,7 +32,10 @@ public final class EnrichmentRuntime {
     ENRICHING.set(true);
     try {
       final ClassLoader applicationLoader = receiver.getClass().getClassLoader();
-      RuntimeBridge.initialize(applicationLoader);
+      if (!initialized) {
+        RuntimeBridge.initialize(applicationLoader);
+        initialized = true;
+      }
       final RuntimeState state = RuntimeBridge.state(applicationLoader);
       if (!state.enabled()) return;
       final Span current = Span.current();
@@ -43,14 +51,11 @@ public final class EnrichmentRuntime {
     }
   }
 
-  public static void reloadFromBridge(final String xml) {
+  public static void reloadFromBridge(final String xml) throws ConfigurationException {
     final ClassLoader applicationLoader = EnrichmentRuntime.class.getClassLoader();
-    try {
-      final org.otel.agent.config.model.CompiledConfiguration configuration =
-          new org.otel.agent.config.parser.ConfigurationParser().parseXml(xml, applicationLoader);
-      RuntimeBridge.publish(applicationLoader, configuration, xml);
-    } catch (final org.otel.agent.config.parser.ConfigurationException ignored) {
-    }
+    final CompiledConfiguration configuration =
+        new ConfigurationParser().parseXml(xml, applicationLoader);
+    RuntimeBridge.publish(applicationLoader, configuration, xml);
   }
 
   private static void createFallback(final Object receiver, final RuntimeState state) {
@@ -73,7 +78,8 @@ public final class EnrichmentRuntime {
 
   private static void write(final Span span, final Object receiver, final RuntimeState state) {
     for (final StaticAttributeRule rule : state.configuration().staticRules()) {
-      WRITER.write(span, rule.key(), CONVERTER.convert(rule.value()));
+      // Static values are always strings per the XML contract; no conversion needed.
+      WRITER.write(span, rule.key(), new AttributeValue(rule.value()));
     }
     for (final DynamicAttributeRule rule : state.ruleIndex().applicable(receiver.getClass())) {
       try {

@@ -13,7 +13,7 @@ fi
 
 if [[ ! -f "$AGENT_JAR" ]]; then
   echo "Building extended OpenTelemetry agent..."
-  gradle -q extendedAgent
+  "$ROOT_DIR/gradlew" -q extendedAgent
 fi
 
 #export OTEL_CUSTOM_AGENT_CONFIG="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICA8L3N0YXRpYz4KICAgIDxkeW5hbWljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJicmFuZCIgcGF0aD0iY29tLmV4YW1wbGUuQ2FyLmJyYW5kIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InBhc3NlbmdlcnMiIHBhdGg9ImNvbS5leGFtcGxlLkNhci5wYXNzZW5nZXJzLm5hbWUiLz4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPgo="
