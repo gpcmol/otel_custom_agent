@@ -10,24 +10,24 @@ class ConfigurationValidationTest {
   @Test
   void rejectsDuplicateSections() {
     assertThrows(
-            ConfigurationException.class,
-            () ->
-                    new ConfigurationParser()
-                            .parse(
-                                    encoded("<configuration><static/><static/></configuration>"),
-                                    getClass().getClassLoader()));
+        ConfigurationException.class,
+        () ->
+            new ConfigurationParser()
+                .parse(
+                    encoded("<configuration><static/><static/></configuration>"),
+                    getClass().getClassLoader()));
   }
 
   @Test
   void rejectsUnknownAttributes() {
     assertThrows(
-            ConfigurationException.class,
-            () ->
-                    new ConfigurationParser()
-                            .parse(
-                                    encoded(
-                                            "<configuration><static><attribute key='x' value='y' extra='z'/></static></configuration>"),
-                                    getClass().getClassLoader()));
+        ConfigurationException.class,
+        () ->
+            new ConfigurationParser()
+                .parse(
+                    encoded(
+                        "<configuration><static><attribute key='x' value='y' extra='z'/></static></configuration>"),
+                    getClass().getClassLoader()));
   }
 
   private static String encoded(final String value) {

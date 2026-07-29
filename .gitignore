@@ -36,3 +36,5 @@ Chart.lock
 .gradle/
 .claude/
 build/
+.opencode/
+gradle/

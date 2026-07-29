@@ -1,0 +1,135 @@
+package org.otel.agent.bridge;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.otel.agent.config.model.CompiledConfiguration;
+import org.otel.agent.config.parser.ConfigurationParser;
+
+class RuntimeBridgeReloadTest {
+  private final ClassLoader loader = getClass().getClassLoader();
+
+  @BeforeEach
+  void setUp() {
+    RuntimeBridge.resetForTesting();
+  }
+
+  @AfterEach
+  void tearDown() {
+    RuntimeBridge.resetForTesting();
+  }
+
+  @Test
+  void reloadReplacesStateWithNewConfiguration() {
+    publishStartupConfig("cars");
+
+    final ReloadResult result = RuntimeBridge.reload(configXml("trucks"));
+    assertTrue(result.succeeded());
+    assertEquals(1, result.updatedClassloaders());
+    assertEquals(1, result.staticRuleCount());
+    assertEquals(1, result.dynamicRuleCount());
+
+    final RuntimeState state = RuntimeBridge.state(loader);
+    assertTrue(state.enabled());
+    assertEquals("trucks", state.configuration().staticRules().getFirst().value());
+  }
+
+  @Test
+  void reloadUpdatesActiveXml() {
+    publishStartupConfig("cars");
+
+    RuntimeBridge.reload(configXml("trucks"));
+
+    assertEquals(configXml("trucks"), RuntimeBridge.activeXml());
+  }
+
+  @Test
+  void reloadFailureLeavesExistingStateUnchanged() {
+    publishStartupConfig("cars");
+
+    final ReloadResult result = RuntimeBridge.reload("<invalid>");
+
+    assertFalse(result.succeeded());
+    assertEquals(0, result.updatedClassloaders());
+    assertEquals(1, result.failures().size());
+
+    final RuntimeState state = RuntimeBridge.state(loader);
+    assertTrue(state.enabled());
+    assertEquals("cars", state.configuration().staticRules().getFirst().value());
+  }
+
+  @Test
+  void reloadDoesNotDiscoverUnregisteredClassloaders() {
+    final ReloadResult result = RuntimeBridge.reload(configXml("trucks"));
+    assertEquals(0, result.updatedClassloaders());
+    assertNull(RuntimeBridge.activeXml());
+  }
+
+  @Test
+  void reloadUpdatesRootClassNames() {
+    publishStartupConfig("cars");
+    assertTrue(RuntimeBridge.rootClassNames().contains(rootClassName()));
+
+    RuntimeBridge.reload(configXml("trucks"));
+    assertTrue(RuntimeBridge.rootClassNames().contains(rootClassName()));
+  }
+
+  @Test
+  void activeXmlIsNullBeforeAnyReload() {
+    assertNull(RuntimeBridge.activeXml());
+  }
+
+  @Test
+  void activeXmlIsSetAfterReload() {
+    publishStartupConfig("cars");
+    RuntimeBridge.reload(configXml("trucks"));
+    assertNotNull(RuntimeBridge.activeXml());
+    assertEquals(configXml("trucks"), RuntimeBridge.activeXml());
+  }
+
+  @Test
+  void reloadFailureDoesNotUpdateActiveXml() {
+    publishStartupConfig("cars");
+    RuntimeBridge.reload(configXml("trucks"));
+    final String beforeFailure = RuntimeBridge.activeXml();
+
+    RuntimeBridge.reload("<invalid>");
+
+    assertEquals(beforeFailure, RuntimeBridge.activeXml());
+  }
+
+  private void publishStartupConfig(final String team) {
+    try {
+      final CompiledConfiguration config =
+          new ConfigurationParser().parseXml(configXml(team), loader);
+      RuntimeBridge.publish(loader, config);
+    } catch (final org.otel.agent.config.parser.ConfigurationException exception) {
+      throw new AssertionError("test config should be valid", exception);
+    }
+  }
+
+  private static String configXml(final String team) {
+    return "<configuration>"
+        + "<static><attribute key=\"team\" value=\""
+        + team
+        + "\"/></static>"
+        + "<dynamic><attribute key=\"brand\" path=\""
+        + rootClassName()
+        + ".brand\"/></dynamic>"
+        + "</configuration>";
+  }
+
+  private static String rootClassName() {
+    return "org.otel.agent.bridge.RuntimeBridgeReloadTest$TestModel";
+  }
+
+  public static final class TestModel {
+    String brand = "cars";
+  }
+}

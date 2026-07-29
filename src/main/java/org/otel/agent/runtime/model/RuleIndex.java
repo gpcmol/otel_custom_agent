@@ -27,10 +27,10 @@ public final class RuleIndex {
     final List<DynamicAttributeRule> cached = applicable.get(runtimeType);
     if (cached != null) return cached;
     final List<DynamicAttributeRule> result =
-            roots.entrySet().stream()
-                    .filter(entry -> entry.getKey().isAssignableFrom(runtimeType))
-                    .flatMap(entry -> entry.getValue().stream())
-                    .toList();
+        roots.entrySet().stream()
+            .filter(entry -> entry.getKey().isAssignableFrom(runtimeType))
+            .flatMap(entry -> entry.getValue().stream())
+            .toList();
     applicable.put(runtimeType, result);
     return result;
   }

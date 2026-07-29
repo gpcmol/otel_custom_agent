@@ -26,8 +26,8 @@ final class TraceAttributeTypeInstrumentation implements TypeInstrumentation {
       @Override
       public boolean matches(final TypeDescription type) {
         return RuntimeBridge.rootClassNames().stream()
-                .anyMatch(
-                        name -> type.getName().equals(name) || hasSuperType(named(name)).matches(type));
+            .anyMatch(
+                name -> type.getName().equals(name) || hasSuperType(named(name)).matches(type));
       }
     };
   }
@@ -35,14 +35,14 @@ final class TraceAttributeTypeInstrumentation implements TypeInstrumentation {
   @Override
   public void transform(final TypeTransformer transformer) {
     transformer.applyAdviceToMethod(
-            isMethod()
-                    .and(not(isConstructor()))
-                    .and(not(isStatic()))
-                    .and(not(isAbstract()))
-                    .and(not(isNative()))
-                    .and(not(isBridge()))
-                    .and(not(isSynthetic())),
-            TraceAttributeTypeInstrumentation.class.getName() + "$TraceAttributeAdvice");
+        isMethod()
+            .and(not(isConstructor()))
+            .and(not(isStatic()))
+            .and(not(isAbstract()))
+            .and(not(isNative()))
+            .and(not(isBridge()))
+            .and(not(isSynthetic())),
+        TraceAttributeTypeInstrumentation.class.getName() + "$TraceAttributeAdvice");
   }
 
   public static class TraceAttributeAdvice {

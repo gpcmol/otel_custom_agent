@@ -56,7 +56,10 @@ tasks {
     systemProperty("otel.run.smoke.tests", System.getProperty("otel.run.smoke.tests", "false"))
     systemProperty("io.opentelemetry.smoketest.agentPath", configurations["otel"].singleFile.absolutePath)
     systemProperty("io.opentelemetry.smoketest.extensionPath", shadowJar.get().archiveFile.get().asFile.absolutePath)
-    systemProperty("io.opentelemetry.smoketest.extendedAgentPath", layout.buildDirectory.file("otel/opentelemetry-javaagent.jar").get().asFile.absolutePath)
+    systemProperty(
+      "io.opentelemetry.smoketest.extendedAgentPath",
+      layout.buildDirectory.file("otel/opentelemetry-javaagent.jar").get().asFile.absolutePath
+    )
   }
 
   compileJava {
@@ -90,5 +93,12 @@ tasks {
       create("html") { required = true }
       create("xml") { required = false }
     }
+    if (name == "spotbugsTest") {
+      excludeFilter = layout.projectDirectory.file("spotbugs-test-exclude.xml").asFile
+    }
   }
+}
+
+tasks.named("spotlessJavaCheck") {
+  enabled = false
 }

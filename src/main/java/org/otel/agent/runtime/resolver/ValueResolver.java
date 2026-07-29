@@ -24,7 +24,7 @@ public final class ValueResolver {
   }
 
   private Object resolveValue(
-          final Object current, final List<PathSegment> segments, final int position) {
+      final Object current, final List<PathSegment> segments, final int position) {
     if (current == null || current instanceof Map<?, ?>) return null;
     if (isCollectionLike(current) && !(segments.get(position) instanceof IndexedPropertySegment)) {
       return resolveCollection(current, segments, position);
@@ -37,7 +37,7 @@ public final class ValueResolver {
   }
 
   private List<Object> resolveCollection(
-          final Object current, final List<PathSegment> segments, final int position) {
+      final Object current, final List<PathSegment> segments, final int position) {
     final List<Object> values = new ArrayList<>();
     for (final Object element : elements(current)) {
       final Object value = resolveValue(element, segments, position);

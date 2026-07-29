@@ -52,6 +52,5 @@ public final class AccessorCache {
     }
   }
 
-  private record Key(Class<?> type, String property) {
-  }
+  private record Key(Class<?> type, String property) {}
 }

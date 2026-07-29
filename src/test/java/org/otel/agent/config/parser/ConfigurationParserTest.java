@@ -13,42 +13,41 @@ class ConfigurationParserTest {
 
   @Test
   void compilesStaticAndDynamicRules() throws Exception {
-    final String root = TestModel.class.getName();
-
-    final String xml = String.format("""
-            <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <configuration>
-                <static>
-                    <attribute key="team" value="cars"/>
-                </static>
-                <dynamic>
-                    <attribute key="brand" path="org.otel.agent.config.parser.ConfigurationParserTest$TestModel.brand"/>
-                </dynamic>
-            </configuration>
-            """, root);
+    final String xml =
+        """
+        <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        <configuration>
+            <static>
+                <attribute key="team" value="cars"/>
+            </static>
+            <dynamic>
+                <attribute key="brand" path="org.otel.agent.config.parser.ConfigurationParserTest$TestModel.brand"/>
+            </dynamic>
+        </configuration>
+        """;
 
     final CompiledConfiguration configuration =
-            parser.parse(encoded(xml), getClass().getClassLoader());
+        parser.parse(encoded(xml), getClass().getClassLoader());
 
     assertEquals("cars", configuration.staticRules().getFirst().value());
     assertEquals(
-            "brand",
-            configuration
-                    .dynamicRules()
-                    .getFirst()
-                    .segments()
-                    .getFirst()
-                    .toString()
-                    .replace("PropertySegment[propertyName=", "")
-                    .replace("]", ""));
+        "brand",
+        configuration
+            .dynamicRules()
+            .getFirst()
+            .segments()
+            .getFirst()
+            .toString()
+            .replace("PropertySegment[propertyName=", "")
+            .replace("]", ""));
   }
 
   @Test
   void rejectsInvalidUtf8() {
     final String invalid =
-            Base64.getEncoder().encodeToString(new byte[]{(byte) 0xc3, (byte) 0x28});
+        Base64.getEncoder().encodeToString(new byte[] {(byte) 0xc3, (byte) 0x28});
     assertThrows(
-            ConfigurationException.class, () -> parser.parse(invalid, getClass().getClassLoader()));
+        ConfigurationException.class, () -> parser.parse(invalid, getClass().getClassLoader()));
   }
 
   @Test

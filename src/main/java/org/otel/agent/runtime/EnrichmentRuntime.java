@@ -19,8 +19,7 @@ public final class EnrichmentRuntime {
   private static final SpanWriter WRITER = new SpanWriter();
   private static final ThreadLocal<Boolean> ENRICHING = ThreadLocal.withInitial(() -> false);
 
-  private EnrichmentRuntime() {
-  }
+  private EnrichmentRuntime() {}
 
   public static void enrich(final Object receiver) {
     if (receiver == null) return;
@@ -44,19 +43,29 @@ public final class EnrichmentRuntime {
     }
   }
 
+  public static void reloadFromBridge(final String xml) {
+    final ClassLoader applicationLoader = EnrichmentRuntime.class.getClassLoader();
+    try {
+      final org.otel.agent.config.model.CompiledConfiguration configuration =
+          new org.otel.agent.config.parser.ConfigurationParser().parseXml(xml, applicationLoader);
+      RuntimeBridge.publish(applicationLoader, configuration, xml);
+    } catch (final org.otel.agent.config.parser.ConfigurationException ignored) {
+    }
+  }
+
   private static void createFallback(final Object receiver, final RuntimeState state) {
     final Tracer tracer = GlobalOpenTelemetry.getTracer("org.otel.custom-agent");
     Span span = null;
     try {
       span =
-              tracer
-                      .spanBuilder("otel.custom-agent.enrichment")
-                      .setSpanKind(SpanKind.INTERNAL)
-                      .startSpan();
+          tracer
+              .spanBuilder("otel.custom-agent.enrichment")
+              .setSpanKind(SpanKind.INTERNAL)
+              .startSpan();
       write(span, receiver, state);
     } catch (final Throwable ignored) {
       System.getLogger(EnrichmentRuntime.class.getName())
-              .log(System.Logger.Level.WARNING, "fallback span creation failed");
+          .log(System.Logger.Level.WARNING, "fallback span creation failed");
     } finally {
       if (span != null) span.end();
     }

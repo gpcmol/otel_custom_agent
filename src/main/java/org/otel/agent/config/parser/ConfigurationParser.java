@@ -35,16 +35,18 @@ public final class ConfigurationParser {
     if (encoded.trim().isEmpty()) {
       throw new ConfigurationException("configuration is blank");
     }
-
-    final Element root = parseXml(decode(encoded));
-    validateElement(root);
-    final Set<String> keys = new HashSet<>();
-    final List<StaticAttributeRule> staticRules = parseStatic(root, keys);
-    final List<DynamicAttributeRule> dynamicRules = parseDynamic(root, keys, applicationLoader);
-    return new CompiledConfiguration(staticRules, dynamicRules);
+    return compile(parseXmlDocument(decode(encoded)), applicationLoader);
   }
 
-  private byte[] decode(final String encoded) throws ConfigurationException {
+  public CompiledConfiguration parseXml(final String xml, final ClassLoader loader)
+      throws ConfigurationException {
+    if (xml == null || xml.trim().isEmpty()) {
+      throw new ConfigurationException("configuration is blank");
+    }
+    return compile(parseXmlDocument(xml.getBytes(StandardCharsets.UTF_8)), loader);
+  }
+
+  public static byte[] decode(final String encoded) throws ConfigurationException {
     try {
       final byte[] bytes = Base64.getDecoder().decode(encoded.trim());
       StandardCharsets.UTF_8
@@ -60,7 +62,16 @@ public final class ConfigurationParser {
     }
   }
 
-  private Element parseXml(final byte[] bytes) throws ConfigurationException {
+  private CompiledConfiguration compile(final Element root, final ClassLoader loader)
+      throws ConfigurationException {
+    validateElement(root);
+    final Set<String> keys = new HashSet<>();
+    final List<StaticAttributeRule> staticRules = parseStatic(root, keys);
+    final List<DynamicAttributeRule> dynamicRules = parseDynamic(root, keys, loader);
+    return new CompiledConfiguration(staticRules, dynamicRules);
+  }
+
+  private Element parseXmlDocument(final byte[] bytes) throws ConfigurationException {
     try {
       final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
       factory.setNamespaceAware(true);
@@ -164,8 +175,7 @@ public final class ConfigurationParser {
     }
   }
 
-  private void validateElement(final Element element)
-      throws ConfigurationException {
+  private void validateElement(final Element element) throws ConfigurationException {
     if (!"configuration".equals(element.getTagName()) || element.getNamespaceURI() != null) {
       throw new ConfigurationException("root element must be configuration without namespace");
     }
