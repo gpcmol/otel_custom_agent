@@ -1,13 +1,9 @@
 package org.otel.agent.config.parser;
 
 import java.io.ByteArrayInputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -20,12 +16,34 @@ import org.otel.agent.config.model.IndexedPropertySegment;
 import org.otel.agent.config.model.PathSegment;
 import org.otel.agent.config.model.PropertySegment;
 import org.otel.agent.config.model.StaticAttributeRule;
+import org.otel.agent.utils.Base64Util;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
+/**
+ * Parses XML configuration into an immutable {@link CompiledConfiguration}.
+ *
+ * <p>Two entry points: {@link #parse(String, ClassLoader)} for Base64-encoded startup config
+ * (read from the {@code OTEL_CUSTOM_AGENT_CONFIG} environment variable), and
+ * {@link #parseXml(String, ClassLoader)} for raw XML submitted at runtime via the config
+ * webserver. Both paths share the same secure XML parsing pipeline and validation rules.
+ *
+ * <p>XML is parsed with {@link DocumentBuilderFactory} configured for secure processing:
+ * external entities, DTDs, and external schema resolution are all disabled to prevent XXE
+ * attacks. The document root must be a namespace-less {@code <configuration>} element with
+ * optional {@code <static>} and {@code <dynamic>} sections.
+ *
+ * <p>Dynamic rules use dot-separated paths (e.g. {@code com.example.Foo.bar.baz[0].name})
+ * that are resolved against the application class loader. The parser tries progressively
+ * shorter class-name prefixes until {@link Class#forName} succeeds, then parses the
+ * remaining segments into {@link PropertySegment} or {@link IndexedPropertySegment} instances.
+ *
+ * <p>All validation errors are wrapped in {@link ConfigurationException} so callers can
+ * distinguish parse failures from successful compilation.
+ */
 public final class ConfigurationParser {
   public CompiledConfiguration parse(final String encoded, final ClassLoader applicationLoader)
       throws ConfigurationException {
@@ -35,7 +53,7 @@ public final class ConfigurationParser {
     if (encoded.trim().isEmpty()) {
       throw new ConfigurationException("configuration is blank");
     }
-    return compile(parseXmlDocument(decode(encoded)), applicationLoader);
+    return compile(parseXmlDocument(Base64Util.decode(encoded)), applicationLoader);
   }
 
   public CompiledConfiguration parseXml(final String xml, final ClassLoader loader)
@@ -44,22 +62,6 @@ public final class ConfigurationParser {
       throw new ConfigurationException("configuration is blank");
     }
     return compile(parseXmlDocument(xml.getBytes(StandardCharsets.UTF_8)), loader);
-  }
-
-  public static byte[] decode(final String encoded) throws ConfigurationException {
-    try {
-      final byte[] bytes = Base64.getDecoder().decode(encoded.trim());
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPORT)
-          .onUnmappableCharacter(CodingErrorAction.REPORT)
-          .decode(ByteBuffer.wrap(bytes));
-      return bytes;
-    } catch (final CharacterCodingException e) {
-      throw new ConfigurationException("invalid UTF-8", e);
-    } catch (final IllegalArgumentException e) {
-      throw new ConfigurationException("invalid Base64", e);
-    }
   }
 
   private CompiledConfiguration compile(final Element root, final ClassLoader loader)

@@ -36,6 +36,7 @@ Purpose is for development teams to define declarative configuration for dynamic
 - gpt-5.6 luna
 - glm 5.2
 - M3
+- Laguna S 2.1 Free
 
 # Configuration Webserver
 

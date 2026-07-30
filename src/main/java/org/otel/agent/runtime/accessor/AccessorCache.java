@@ -5,6 +5,22 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import org.otel.agent.runtime.cache.FifoCache;
 
+/**
+ * Cache of {@link Accessor} instances for (class, property) pairs, avoiding repeated
+ * reflective method/field lookup.
+ *
+ * <p>Discovery order: tries {@code getX()} getter → {@code isX()} boolean getter → public
+ * field access. Only no-arg, non-static methods are considered. Boolean getters are only
+ * accepted when the return type is {@code boolean} or {@code Boolean}.
+ *
+ * <p>Caching: uses a bounded {@link FifoCache} with capacity 1000. A {@code NULL_ACCESSOR}
+ * sentinel distinguishes "not found" from "found but null" — when a property cannot be
+ * discovered, the sentinel is cached so subsequent lookups return {@code null} without
+ * retrying the reflection.
+ *
+ * <p>Thread safety: the underlying {@link FifoCache} uses {@link ConcurrentHashMap} for
+ * lock-free reads, making cache hits safe for concurrent access from instrumentation advice.
+ */
 public final class AccessorCache {
   private static final Accessor NULL_ACCESSOR = target -> null;
 

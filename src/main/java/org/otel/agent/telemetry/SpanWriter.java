@@ -4,6 +4,15 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import java.util.List;
 
+/**
+ * Writes {@link AttributeValue} instances onto an OpenTelemetry {@link Span} as typed attributes.
+ *
+ * <p>Dispatches on the OTel scalar type (String, Boolean, Long, Double) and selects the correct
+ * {@link AttributeKey} overload. For list values, the element type is determined either from the
+ * first non-null element (for non-empty lists) or from {@link AttributeValue#componentType()}
+ * (for empty lists, where element type inference is impossible). Unknown or mixed-type arrays are
+ * silently dropped, matching the OTel attribute contract.
+ */
 public final class SpanWriter {
   public void write(final Span span, final String key, final AttributeValue attribute) {
     if (attribute == null || attribute.value() == null) return;

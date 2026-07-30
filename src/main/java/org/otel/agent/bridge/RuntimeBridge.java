@@ -15,9 +15,56 @@ import org.otel.agent.config.model.DynamicAttributeRule;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
 import org.otel.agent.runtime.model.RuleIndex;
+import org.otel.agent.utils.Base64Util;
 import org.otel.agent.webserver.ConfigWebserver;
 
-/** Minimal entry point shared by instrumentation advice and compiled runtime state. */
+/**
+ * Bridge between the agent extension class loader and application class loaders.
+ *
+ * <p>ClassLoader architecture:
+ * <pre>
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │ JVM bootstrap                                               │
+ * │  ├─ java.lang, com.sun.net.httpserver, ...                  │
+ * │  └─ OpenTelemetry Java agent (javaagent)                    │
+ * │     ├─ io.opentelemetry.javaagent.*                         │
+ * │     └─ Agent extension class loader                         │
+ * │        ├─ org.otel.agent.* (this code)                      │
+ * │        ├─ org.otel.agent.bridge.RuntimeBridge  ← this class │
+ * │        └─ Instrumentation advice classes                    │
+ * └─────────────────────────────────────────────────────────────┘
+ *
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │ Application class loader                                    │
+ * │  ├─ Application classes (instrumented by OTel advice)       │
+ * │  └─ org.otel.agent.runtime.EnrichmentRuntime  ← injected    │
+ * │     (loaded here so advice can reference it)                │
+ * └─────────────────────────────────────────────────────────────┘
+ * </pre>
+ *
+ * <p>Configuration flow:
+ * <ol>
+ *   <li>At startup, {@link #initialize(ClassLoader)} is called from instrumentation advice
+ *       (running in the application class loader). It reads the {@code OTEL_CUSTOM_AGENT_CONFIG}
+ *       env var, Base64-decodes it, and parses it into a {@link CompiledConfiguration} using
+ *       the <em>application</em> class loader (so dynamic rule paths can resolve app classes).</li>
+ *   <li>The compiled configuration is published as an immutable {@link RuntimeState} into the
+ *       {@code STATES} map, keyed by the application class loader.</li>
+ *   <li>At method-exit, the instrumentation advice calls {@link #state(ClassLoader)} to look up
+ *       the current {@link RuntimeState} for the receiver's class loader, then calls
+ *       {@link org.otel.agent.runtime.EnrichmentRuntime#enrich(Object)} via reflection.</li>
+ *   <li>On reload (HTTP POST to the config webserver), {@link #reload(String)} re-parses the
+ *       XML for <em>each</em> registered application class loader, publishes a new
+ *       {@link RuntimeState}, and forwards the XML to
+ *       {@link org.otel.agent.runtime.EnrichmentRuntime#reloadFromBridge(String)} in the
+ *       application class loader so the runtime cache is rebuilt there.</li>
+ * </ol>
+ *
+ * <p>Thread safety: all mutations to {@code STATES}, {@code ROOT_NAMES}, and {@code ACTIVE_XML}
+ * are guarded by {@code synchronized(RuntimeBridge.class)}. The {@code state(ClassLoader)}
+ * lookup uses a single-entry volatile cache ({@code memoLoader}/{@code memoState}) for the
+ * common case where advice repeatedly reads state for the same loader.
+ */
 public final class RuntimeBridge {
   private static final RuntimeState DISABLED = RuntimeState.disabled();
   private static final Map<ClassLoader, RuntimeState> STATES = new WeakHashMap<>();
@@ -143,7 +190,7 @@ public final class RuntimeBridge {
 
   private static String decodeToXml(final String encoded) {
     try {
-      return new String(ConfigurationParser.decode(encoded), StandardCharsets.UTF_8);
+      return new String(Base64Util.decode(encoded), StandardCharsets.UTF_8);
     } catch (final ConfigurationException exception) {
       return null;
     }

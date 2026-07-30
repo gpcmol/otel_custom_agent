@@ -18,6 +18,33 @@ import org.otel.agent.telemetry.AttributeConverter;
 import org.otel.agent.telemetry.AttributeValue;
 import org.otel.agent.telemetry.SpanWriter;
 
+/**
+ * Runtime enrichment engine that resolves configured attribute paths against instrumented
+ * objects and writes the results as span attributes.
+ *
+ * <p>Entry point: called from instrumentation advice via
+ * {@link org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation.TraceAttributeAdvice}.
+ * The {@link #enrich(Object)} method:
+ * <ol>
+ *   <li>Initializes the agent bridge on first call (lazy startup)</li>
+ *   <li>Looks up the {@link RuntimeState} for the receiver's class loader</li>
+ *   <li>Writes static attributes (cached per configuration identity) and dynamic attributes
+ *       (resolved per receiver via {@link ValueResolver}) to the current span</li>
+ * </ol>
+ *
+ * <p>Fallback: if no valid span context is available (e.g. outside a trace), a fallback
+ * {@code INTERNAL} span is created via the OTel global tracer so attributes are still emitted.
+ *
+ * <p>Reentrancy guard: a {@link ThreadLocal} boolean prevents recursive enrichment when
+ * attribute resolution itself triggers instrumented methods.
+ *
+ * <p>Static cache: {@code staticKeys}/{@code staticValues} arrays are rebuilt only when the
+ * {@link RuntimeState} identity changes (checked via reference equality on the volatile
+ * {@code cachedState} field), avoiding per-span allocation in steady state.
+ *
+ * <p>Failure isolation: all exceptions are swallowed — enrichment must never affect application
+ * behavior. Individual dynamic rule failures do not block other rules.
+ */
 public final class EnrichmentRuntime {
   private static final ValueResolver RESOLVER = new ValueResolver(new AccessorCache());
   private static final AttributeConverter CONVERTER = new AttributeConverter();

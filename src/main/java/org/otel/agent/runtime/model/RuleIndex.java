@@ -9,6 +9,19 @@ import org.otel.agent.config.model.CompiledConfiguration;
 import org.otel.agent.config.model.DynamicAttributeRule;
 import org.otel.agent.runtime.cache.FifoCache;
 
+/**
+ * Index of dynamic attribute rules keyed by their root class, enabling efficient lookup of
+ * applicable rules for a given runtime type.
+ *
+ * <p>Built once per {@link CompiledConfiguration} by {@link RuntimeBridge#publish}. Rules are
+ * grouped by {@link DynamicAttributeRule#rootClass()} into an immutable map. At query time,
+ * {@link #applicable(Class)} returns all rules whose root class is a superclass or interface
+ * of the runtime type (via {@code Class.isAssignableFrom}).
+ *
+ * <p>Caching: results are cached in a bounded {@link FifoCache} keyed by runtime type, so
+ * repeated lookups for the same class (the common case) are O(1). Cache capacity is 1000
+ * entries; eviction is best-effort under concurrency.
+ */
 public final class RuleIndex {
   private final Map<Class<?>, List<DynamicAttributeRule>> roots;
   private final FifoCache<Class<?>, List<DynamicAttributeRule>> applicable = new FifoCache<>(1000);

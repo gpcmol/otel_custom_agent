@@ -19,6 +19,29 @@ import net.bytebuddy.matcher.ElementMatcher;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.runtime.EnrichmentRuntime;
 
+/**
+ * ByteBuddy {@link TypeInstrumentation} that adds trace-attribute enrichment advice to
+ * application classes matching the configured dynamic rules.
+ *
+ * <p>Type matching: {@link #typeMatcher()} delegates to a cached
+ * {@link ElementMatcher} built from the root class names in the active configuration
+ * (via {@link RuntimeBridge#rootClassNames()}). The matcher uses
+ * {@code hasSuperType} semantics — a class matches if any of its super-types (interfaces or
+ * superclass) is one of the configured root classes. The matcher is rebuilt only when the
+ * root class name set changes identity (checked via reference equality on the volatile
+ * {@code cachedRoots} field), avoiding repeated ByteBuddy walks on every type load.
+ *
+ * <p>Method matching: {@link #transform(TypeTransformer)} applies
+ * {@link TraceAttributeAdvice#onExit(Object)} as an {@code @Advice.OnMethodExit} to every
+ * non-static, non-abstract, non-native, non-bridge, non-synthetic instance method. The advice
+ * calls {@link EnrichmentRuntime#enrich(Object)} with the method receiver, which resolves
+ * configured dynamic attribute paths against the receiver and writes the results as span
+ * attributes.
+ *
+ * <p>Performance: the {@code typeMatcher} short-circuits to {@code false} when no root classes
+ * are configured, avoiding any ByteBuddy work. The {@code OnMethodExit} advice is suppressed
+ * on all exceptions to ensure enrichment never affects application behavior.
+ */
 final class TraceAttributeTypeInstrumentation implements TypeInstrumentation {
   // ponytail: one cached matcher per published root-name-set identity. A single
   // hasSuperType walk tests every level via an O(1) name lookup instead of N walks.

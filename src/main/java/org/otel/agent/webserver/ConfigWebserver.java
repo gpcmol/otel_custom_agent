@@ -12,8 +12,26 @@ import java.util.function.Supplier;
 import org.otel.agent.bridge.ReloadResult;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.config.parser.ConfigurationException;
-import org.otel.agent.config.parser.ConfigurationParser;
+import org.otel.agent.utils.Base64Util;
 
+/**
+ * Embedded HTTP server for runtime configuration inspection and reload.
+ *
+ * <p>Binds to {@code 127.0.0.1:14317} (loopback only) and serves four endpoints: an HTML config
+ * UI at {@code GET /}, the active XML at {@code GET /config/current}, the original startup XML
+ * at {@code GET /config/original}, and a reload endpoint at {@code POST /config}.
+ *
+ * <p>Uses a raw {@link java.net.ServerSocket} with minimal HTTP/1.1 parsing instead of
+ * {@link com.sun.net.httpserver.HttpServer}. The OpenTelemetry Java agent ships a
+ * {@code java-httpserver} instrumentation module that intercepts
+ * {@code com.sun.net.httpserver.HttpServer} at bootstrap-classloader initialization time and wraps
+ * its handler execution. Because the agent extension class loader and the system class loader
+ * diverge, handler threads spawned by the instrumented {@code HttpServer} cannot reliably cross
+ * back into the extension class loader, causing handler calls to hang. A raw {@code ServerSocket}
+ * is not instrumented by {@code java-httpserver} and keeps all accept/parse/route logic within the
+ * extension class loader, avoiding the cross-loader boundary entirely. This choice also adds no
+ * dependencies beyond the JDK.
+ */
 public final class ConfigWebserver {
   // ponytail: test hook; the spec port is 14317
   static int port = Integer.getInteger("otel.config.webserver.port", 14317);
@@ -24,16 +42,14 @@ public final class ConfigWebserver {
       () -> System.getenv("OTEL_CUSTOM_AGENT_CONFIG");
 
   private static ServerSocket serverSocket;
-  private static Thread acceptThread;
-
-  private ConfigWebserver() {}
+    private ConfigWebserver() {}
 
   public static synchronized void start() throws IOException {
     if (serverSocket != null && !serverSocket.isClosed()) return;
     final ServerSocket socket = new ServerSocket();
     socket.bind(new InetSocketAddress(LOOPBACK, port));
     serverSocket = socket;
-    acceptThread = new Thread(ConfigWebserver::acceptLoop, "otel-config-webserver");
+    final Thread acceptThread = new Thread(ConfigWebserver::acceptLoop, "otel-config-webserver");
     acceptThread.setDaemon(true);
     acceptThread.start();
   }
@@ -167,7 +183,7 @@ public final class ConfigWebserver {
       return;
     }
     try {
-      final byte[] decoded = ConfigurationParser.decode(encoded);
+      final byte[] decoded = Base64Util.decode(encoded);
       sendResponse(
           client, 200, "text/xml; charset=utf-8", new String(decoded, StandardCharsets.UTF_8));
     } catch (final ConfigurationException exception) {

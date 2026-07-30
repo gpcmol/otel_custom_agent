@@ -11,6 +11,23 @@ import org.otel.agent.config.model.PropertySegment;
 import org.otel.agent.runtime.accessor.Accessor;
 import org.otel.agent.runtime.accessor.AccessorCache;
 
+/**
+ * Resolves dot-separated attribute paths against runtime objects using cached
+ * {@link Accessor} instances.
+ *
+ * <p>Path segments: {@link PropertySegment} (named property) and
+ * {@link IndexedPropertySegment} (property + array/list index). The resolver walks the path
+ * recursively, using {@link AccessorCache#find} to get property accessors for each step.
+ *
+ * <p>Collection flattening: when a path segment resolves to an array or {@link Iterable},
+ * the resolver descends into each element and collects all non-null leaf values into a flat
+ * {@link List}. This allows paths like {@code items[0].name} to produce multiple attribute
+ * values when {@code items} is a collection.
+ *
+ * <p>Null safety: any null intermediate value short-circuits to {@code null}. Maps are
+ * explicitly unsupported (returns null). Reflection failures in accessors are swallowed
+ * by the accessor itself (returns null).
+ */
 public final class ValueResolver {
   private final AccessorCache accessors;
 

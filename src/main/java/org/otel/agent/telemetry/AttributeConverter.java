@@ -6,6 +6,17 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Converts arbitrary Java objects into OpenTelemetry-compatible {@link AttributeValue} instances.
+ *
+ * <p>OTel span attributes support only four scalar types — {@code String}, {@code Boolean},
+ * {@code Long}, and {@code Double} — plus arrays of those types. This converter normalizes
+ * arbitrary Java values (numbers, enums, characters, collections, arrays, etc.) into those
+ * OTel primitives. Numeric types are widened to {@code Long} or {@code Double} as appropriate;
+ * {@link java.math.BigDecimal} and {@link java.math.BigInteger} are converted with overflow
+ * checks, returning {@code null} on failure. Empty or heterogeneous collections are rejected
+ * so the resulting attribute is always type-homogeneous.
+ */
 public final class AttributeConverter {
   public AttributeValue convert(final Object value) {
     if (value == null) return null;
