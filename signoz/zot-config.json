@@ -1,0 +1,32 @@
+{
+  "storage": {
+    "rootDirectory": "/var/lib/registry"
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "5000"
+  },
+  "extensions": {
+    "sync": {
+      "enable": true,
+      "registries": [
+        {
+          "urls": ["https://index.docker.io"],
+          "onDemand": true
+        },
+        {
+          "urls": ["https://ghcr.io"],
+          "onDemand": true
+        },
+        {
+          "urls": ["https://quay.io"],
+          "onDemand": true
+        }
+        ,{
+          "urls": ["https://registry.k8s.io"],
+          "onDemand": true
+        }
+      ]
+    }
+  }
+}

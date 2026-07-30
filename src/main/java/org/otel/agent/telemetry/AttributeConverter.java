@@ -22,17 +22,23 @@ public final class AttributeConverter {
         return null;
       }
     }
-    if (value instanceof Float || value instanceof Double) return finiteDouble((Number) value);
-    if (value instanceof BigDecimal decimal) return finiteDouble(decimal);
+    if (value instanceof Float || value instanceof Double) {
+      final Double d = finiteDouble((Number) value);
+      return d == null ? null : new AttributeValue(d);
+    }
+    if (value instanceof BigDecimal decimal) {
+      final Double d = finiteDouble(decimal);
+      return d == null ? null : new AttributeValue(d);
+    }
     if (value instanceof String || value instanceof Boolean) return new AttributeValue(value);
     if (value.getClass().isArray()) return convertArray(value);
     if (value instanceof Iterable<?> iterable) return convertIterable(iterable);
     return null;
   }
 
-  private AttributeValue finiteDouble(final Number value) {
+  private static Double finiteDouble(final Number value) {
     final double converted = value.doubleValue();
-    return Double.isFinite(converted) ? new AttributeValue(converted) : null;
+    return Double.isFinite(converted) ? converted : null;
   }
 
   private AttributeValue convertArray(final Object value) {
@@ -41,7 +47,7 @@ public final class AttributeConverter {
     for (int i = 0; i < Array.getLength(value); i++) {
       final Object element = Array.get(value, i);
       if (element == null) continue;
-      final Object converted = convertScalar(element);
+      final Object converted = convertToScalar(element);
       if (converted == null) return null;
       if (type == null) type = converted.getClass();
       if (type != converted.getClass()) return null;
@@ -57,7 +63,7 @@ public final class AttributeConverter {
     Class<?> type = null;
     for (final Object value : iterable) {
       if (value == null) continue;
-      final Object converted = convertScalar(value);
+      final Object converted = convertToScalar(value);
       if (converted == null) return null;
       if (type == null) type = converted.getClass();
       if (type != converted.getClass()) return null;
@@ -83,8 +89,25 @@ public final class AttributeConverter {
     return null;
   }
 
-  private Object convertScalar(final Object value) {
-    final AttributeValue converted = convert(value);
-    return converted == null || converted.value() instanceof List<?> ? null : converted.value();
+  /** Converts a scalar element to its boxed OTel scalar without the {@link AttributeValue} wrapper. */
+  private static Object convertToScalar(final Object value) {
+    if (value == null) return null;
+    if (value instanceof Character character) return character.toString();
+    if (value instanceof Enum<?> enumeration) return enumeration.name();
+    if (value instanceof Byte
+        || value instanceof Short
+        || value instanceof Integer
+        || value instanceof Long) return ((Number) value).longValue();
+    if (value instanceof BigInteger integer) {
+      try {
+        return integer.longValueExact();
+      } catch (final ArithmeticException ignored) {
+        return null;
+      }
+    }
+    if (value instanceof Float || value instanceof Double) return finiteDouble((Number) value);
+    if (value instanceof BigDecimal decimal) return finiteDouble(decimal);
+    if (value instanceof String || value instanceof Boolean) return value;
+    return null;
   }
 }

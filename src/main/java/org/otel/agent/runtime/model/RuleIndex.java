@@ -26,12 +26,14 @@ public final class RuleIndex {
   public List<DynamicAttributeRule> applicable(final Class<?> runtimeType) {
     final List<DynamicAttributeRule> cached = applicable.get(runtimeType);
     if (cached != null) return cached;
-    final List<DynamicAttributeRule> result =
-        roots.entrySet().stream()
-            .filter(entry -> entry.getKey().isAssignableFrom(runtimeType))
-            .flatMap(entry -> entry.getValue().stream())
-            .toList();
-    applicable.put(runtimeType, result);
-    return result;
+    final List<DynamicAttributeRule> result = new ArrayList<>();
+    for (final Map.Entry<Class<?>, List<DynamicAttributeRule>> entry : roots.entrySet()) {
+      if (entry.getKey().isAssignableFrom(runtimeType)) {
+        result.addAll(entry.getValue());
+      }
+    }
+    final List<DynamicAttributeRule> immutable = List.copyOf(result);
+    applicable.put(runtimeType, immutable);
+    return immutable;
   }
 }

@@ -38,3 +38,5 @@ Chart.lock
 build/
 .opencode/
 gradle/
+**/tls.crt
+**/tls.key

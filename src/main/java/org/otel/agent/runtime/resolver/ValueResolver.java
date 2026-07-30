@@ -39,18 +39,32 @@ public final class ValueResolver {
   private List<Object> resolveCollection(
       final Object current, final List<PathSegment> segments, final int position) {
     final List<Object> values = new ArrayList<>();
-    for (final Object element : elements(current)) {
-      final Object value = resolveValue(element, segments, position);
-      if (value instanceof Collection<?> nested) {
-        for (final Object nestedValue : nested) if (nestedValue != null) values.add(nestedValue);
-      } else if (value != null && value.getClass().isArray()) {
-        for (int i = 0; i < Array.getLength(value); i++) {
-          final Object nestedValue = Array.get(value, i);
-          if (nestedValue != null) values.add(nestedValue);
-        }
-      } else if (value != null) values.add(value);
+    if (current.getClass().isArray()) {
+      for (int i = 0; i < Array.getLength(current); i++) {
+        collect(values, Array.get(current, i), segments, position);
+      }
+    } else {
+      for (final Object element : (Iterable<?>) current) {
+        collect(values, element, segments, position);
+      }
     }
     return values;
+  }
+
+  private void collect(
+      final List<Object> values,
+      final Object element,
+      final List<PathSegment> segments,
+      final int position) {
+    final Object value = resolveValue(element, segments, position);
+    if (value instanceof Collection<?> nested) {
+      for (final Object nestedValue : nested) if (nestedValue != null) values.add(nestedValue);
+    } else if (value != null && value.getClass().isArray()) {
+      for (int i = 0; i < Array.getLength(value); i++) {
+        final Object nestedValue = Array.get(value, i);
+        if (nestedValue != null) values.add(nestedValue);
+      }
+    } else if (value != null) values.add(value);
   }
 
   private Object read(final Object current, final PathSegment segment) {
@@ -81,15 +95,5 @@ public final class ValueResolver {
 
   private boolean isCollectionLike(final Object value) {
     return value.getClass().isArray() || value instanceof Iterable<?>;
-  }
-
-  private List<Object> elements(final Object value) {
-    final List<Object> result = new ArrayList<>();
-    if (value.getClass().isArray()) {
-      for (int i = 0; i < Array.getLength(value); i++) result.add(Array.get(value, i));
-    } else {
-      for (final Object element : (Iterable<?>) value) result.add(element);
-    }
-    return result;
   }
 }

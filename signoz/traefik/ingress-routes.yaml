@@ -1,0 +1,20 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: otel-http-ingress
+  namespace: signoz
+spec:
+  entryPoints:
+    - otlp
+    - otlp-http
+  routes:
+    - match: PathPrefix(`/v1/traces`)
+      kind: Rule
+      services:
+        - name: signoz-otel-collector
+          port: 4317 # gRPC
+    - match: PathPrefix(`/v1/traces`)
+      kind: Rule
+      services:
+        - name: signoz-otel-collector
+          port: 4318 # http

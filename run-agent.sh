@@ -19,9 +19,14 @@ fi
 #export OTEL_CUSTOM_AGENT_CONFIG="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICA8L3N0YXRpYz4KICAgIDxkeW5hbWljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJicmFuZCIgcGF0aD0iY29tLmV4YW1wbGUuQ2FyLmJyYW5kIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InBhc3NlbmdlcnMiIHBhdGg9ImNvbS5leGFtcGxlLkNhci5wYXNzZW5nZXJzLm5hbWUiLz4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPgo="
 export OTEL_CUSTOM_AGENT_CONFIG="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICA8L3N0YXRpYz4KICAgIDxkeW5hbWljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJicmFuZCIgcGF0aD0iY29tLmV4YW1wbGUuQ2FyLmJyYW5kIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InBhc3NlbmdlcnMiIHBhdGg9ImNvbS5leGFtcGxlLkNhci5wYXNzZW5nZXJzWzFdLm5hbWUiLz4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPg=="
 
+IP=$(kubectl get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' -n traefik)
+echo "Traafik IP $IP"
+
 exec java \
   -javaagent:"$AGENT_JAR" \
   -Dotel.service.name=car-app \
-  -Dotel.exporter.otlp.endpoint="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}" \
+  -Dotel.exporter.otlp.endpoint="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://${IP}:4318}" \
   -Dotel.javaagent.debug="${OTEL_JAVAAGENT_DEBUG:-true}" \
+  -Dotel.metrics.exporter=none \
+  -Dotel.logs.exporter=none \
   -jar "$APP_JAR"

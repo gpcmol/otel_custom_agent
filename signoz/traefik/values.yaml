@@ -1,0 +1,17 @@
+log:
+  level: TRACE
+
+accessLog:
+  enabled: true
+
+ports:
+  otlp-grpc:
+    port: 4317
+    expose:
+      default: true
+    exposedPort: 4317
+  otlp-http:
+    port: 4318
+    expose:
+      default: true
+    exposedPort: 4318

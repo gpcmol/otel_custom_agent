@@ -26,7 +26,7 @@ Purpose is for development teams to define declarative configuration for dynamic
     </static>
     <dynamic>
         <attribute key="brand" path="com.example.Car.brand"/>
-        <attribute key="passengers" path="com.example.Car.passengers[1].name"/>
+        <attribute key="passengers" path="com.example.Car.passengers[8].name" value="benzeen"/>
     </dynamic>
 </configuration>
 ```
@@ -35,6 +35,7 @@ Purpose is for development teams to define declarative configuration for dynamic
 - opencode with gitnexus, ponytail and openspec
 - gpt-5.6 luna
 - glm 5.2
+- M3
 
 # Configuration Webserver
 
@@ -76,3 +77,6 @@ GLM 5.2
 201,564 tokens
 $14.39 spent
 ```
+
+## Opzetten Signoz for demo purposes
+https://signoz.io/docs/install/kubernetes/local/

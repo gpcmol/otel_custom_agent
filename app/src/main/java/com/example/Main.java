@@ -13,16 +13,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Main {
 
+    private static final int port = 8081;
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final List<Car> garage = new CopyOnWriteArrayList<>();
     private static final Garage demoGarage = new Garage(List.of(new Customer("Jan", "Amsterdam")));
 
     public static void main(String[] args) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/cars", new CarsHandler());
         server.setExecutor(null);
         server.start();
-        System.out.println("Garage running on http://localhost:8080");
+        System.out.println("Garage running on http://localhost:" + port);
     }
 
     static class CarsHandler implements HttpHandler {

@@ -4,6 +4,7 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
+import java.util.List;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.bridge.RuntimeState;
 import org.otel.agent.config.model.CompiledConfiguration;
@@ -21,6 +22,7 @@ public final class EnrichmentRuntime {
   private static final ValueResolver RESOLVER = new ValueResolver(new AccessorCache());
   private static final AttributeConverter CONVERTER = new AttributeConverter();
   private static final SpanWriter WRITER = new SpanWriter();
+  private static final Tracer FALLBACK_TRACER = GlobalOpenTelemetry.getTracer("org.otel.custom-agent");
   private static final ThreadLocal<Boolean> ENRICHING = ThreadLocal.withInitial(() -> false);
   private static volatile boolean initialized;
 
@@ -59,11 +61,10 @@ public final class EnrichmentRuntime {
   }
 
   private static void createFallback(final Object receiver, final RuntimeState state) {
-    final Tracer tracer = GlobalOpenTelemetry.getTracer("org.otel.custom-agent");
     Span span = null;
     try {
       span =
-          tracer
+          FALLBACK_TRACER
               .spanBuilder("otel.custom-agent.enrichment")
               .setSpanKind(SpanKind.INTERNAL)
               .startSpan();
@@ -76,10 +77,21 @@ public final class EnrichmentRuntime {
     }
   }
 
+  // ponytail: prebuilt static attributes are immutable per config; rebuild only when the
+  // active RuntimeState identity changes. Steady state reuses the array with zero allocation.
+  private static volatile RuntimeState cachedState;
+  private static volatile String[] staticKeys;
+  private static volatile AttributeValue[] staticValues;
+
   private static void write(final Span span, final Object receiver, final RuntimeState state) {
-    for (final StaticAttributeRule rule : state.configuration().staticRules()) {
-      // Static values are always strings per the XML contract; no conversion needed.
-      WRITER.write(span, rule.key(), new AttributeValue(rule.value()));
+    if (state != cachedState) {
+      buildStaticCache(state);
+      cachedState = state;
+    }
+    final String[] keys = staticKeys;
+    final AttributeValue[] attrs = staticValues;
+    for (int i = 0; i < keys.length; i++) {
+      WRITER.write(span, keys[i], attrs[i]);
     }
     for (final DynamicAttributeRule rule : state.ruleIndex().applicable(receiver.getClass())) {
       try {
@@ -89,5 +101,18 @@ public final class EnrichmentRuntime {
         // One broken rule must not block the remaining rules.
       }
     }
+  }
+
+  private static synchronized void buildStaticCache(final RuntimeState state) {
+    if (state == cachedState) return;
+    final List<StaticAttributeRule> rules = state.configuration().staticRules();
+    final String[] keys = new String[rules.size()];
+    final AttributeValue[] values = new AttributeValue[rules.size()];
+    for (int i = 0; i < rules.size(); i++) {
+      keys[i] = rules.get(i).key();
+      values[i] = new AttributeValue(rules.get(i).value());
+    }
+    staticKeys = keys;
+    staticValues = values;
   }
 }
