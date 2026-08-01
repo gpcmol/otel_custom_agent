@@ -4,20 +4,22 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import org.otel.agent.config.model.CompiledConfiguration;
-import org.otel.agent.config.model.DynamicAttributeRule;
+import org.otel.agent.config.model.ExitPoint;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
-import org.otel.agent.runtime.model.RuleIndex;
+import org.otel.agent.runtime.model.ExitPointIndex;
 import org.otel.agent.utils.Base64Util;
 import org.otel.agent.webserver.ConfigWebserver;
+import org.w3c.dom.Element;
 
 /**
  * Bridge between the agent extension class loader and application class loaders.
@@ -90,6 +92,10 @@ public final class RuntimeBridge {
   // STATES has no strong backing at that point and can be GC'd before state() reads it.
   private static final Map<ClassLoader, Boolean> ENABLED = new WeakHashMap<>();
   private static final AtomicReference<Set<String>> ROOT_NAMES = new AtomicReference<>(Set.of());
+  // ponytail: per-class method-name groups the module's typeInstrumentations() exposes to
+  // ByteBuddy for advice installation. Updated atomically with ROOT_NAMES on publish/reload.
+  private static final AtomicReference<Map<String, Set<String>>> ROOT_METHODS =
+      new AtomicReference<>(Map.of());
   private static final AtomicReference<String> ACTIVE_XML = new AtomicReference<>();
   private static final AtomicBoolean WEBSERVER_STARTED = new AtomicBoolean(false);
   private static final WeakReference<RuntimeState> DISABLED_REF = new WeakReference<>(DISABLED);
@@ -109,19 +115,34 @@ public final class RuntimeBridge {
 
   private static void publishLocked(
       final ClassLoader loader, final CompiledConfiguration configuration) {
-    final RuntimeState state = RuntimeState.enabled(configuration, new RuleIndex(configuration));
+    final RuntimeState state =
+        RuntimeState.enabled(configuration, new ExitPointIndex(configuration));
     STATES.put(loader, new WeakReference<>(state));
     ENABLED.put(loader, Boolean.TRUE);
-    ROOT_NAMES.set(
-        configuration.dynamicRules().stream()
-            .map(DynamicAttributeRule::rootClassName)
-            .collect(Collectors.toUnmodifiableSet()));
+    final Map<String, Set<String>> methodsByClass = new HashMap<>();
+    for (final ExitPoint exitPoint : configuration.exitPoints()) {
+      methodsByClass
+          .computeIfAbsent(exitPoint.rootClassName(), ignored -> new HashSet<>())
+          .add(exitPoint.methodName());
+    }
+    final Map<String, Set<String>> immutableMethods = new HashMap<>();
+    methodsByClass.forEach((name, methods) -> immutableMethods.put(name, Set.copyOf(methods)));
+    ROOT_NAMES.set(Set.copyOf(immutableMethods.keySet()));
+    ROOT_METHODS.set(Map.copyOf(immutableMethods));
     forwardStateToApplicationClassloader(loader, state);
   }
 
   public static void initialize(final ClassLoader applicationLoader) {
+    // ponytail: the reentry guard is now based on ENABLED, not STATES. prePublishRootMethods
+    // inserts a placeholder STATES entry (DISABLED_REF) before the parser's Class.forName runs,
+    // so the nested ByteBuddy-triggered classLoaderMatcher call doesn't re-enter initialize and
+    // double-parse. The real publish later replaces DISABLED_REF with the enabled RuntimeState.
     synchronized (RuntimeBridge.class) {
-      if (STATES.containsKey(applicationLoader)) return;
+      if (ENABLED.getOrDefault(applicationLoader, Boolean.FALSE)) {
+        // Already initialised successfully on a previous call; skip.
+        final WeakReference<RuntimeState> ref = STATES.get(applicationLoader);
+        if (ref != null && ref.get() != null && ref.get() != DISABLED) return;
+      }
     }
     final String encoded = System.getenv("OTEL_CUSTOM_AGENT_CONFIG");
     if (encoded == null) {
@@ -132,6 +153,12 @@ public final class RuntimeBridge {
       return;
     }
     startWebserverIfNeeded();
+    // ponytail: publish ROOT_NAMES + ENABLED=true *before* ConfigurationParser.parse runs — parse
+    // triggers Class.forName on configured classes, ByteBuddy reintegrates the load via
+    // classLoaderMatcher which needs ENABLED=true to install advice on this loader. If the parse
+    // fails later we roll back. Without this, ByteBuddy's nested transform during parse sees
+    // ENABLED=false and never installs advice, leaving Garage (already loaded) untransformed.
+    prePublishRootMethods(encoded, applicationLoader);
     try {
       final CompiledConfiguration configuration =
           new ConfigurationParser().parse(encoded, applicationLoader);
@@ -140,10 +167,75 @@ public final class RuntimeBridge {
       logConfig(configuration);
     } catch (final ConfigurationException exception) {
       synchronized (RuntimeBridge.class) {
-        STATES.putIfAbsent(applicationLoader, DISABLED_REF);
-        ENABLED.putIfAbsent(applicationLoader, Boolean.FALSE);
+        STATES.put(applicationLoader, DISABLED_REF);
+        ENABLED.put(applicationLoader, Boolean.FALSE);
+      }
+      // ponytail: do NOT clear ROOT_NAMES/ROOT_METHODS here — another loader may have published
+      // them successfully. Clearing here would break the typeMatcher for all subsequent loads,
+      // including those of loaders that successfully published. A failed loader gets
+      // ENABLED=false so classLoaderMatcher never invokes its advice — global ROOT_NAMES being
+      // slightly inaccurate (it contains names that are not applicable on this failed loader)
+      // is harmless because the advice gating sees enabled=false and short-circuits in enrich.
+    }
+  }
+
+  private static void prePublishRootMethods(final String encoded, final ClassLoader loader) {
+    try {
+      final String xml = decodeToXml(encoded);
+      if (xml == null) return;
+      final Map<String, Set<String>> methodsByClass = scanEnrichMethods(xml);
+      if (methodsByClass.isEmpty()) return;
+      // ponytail: set ROOT_NAMES and ENABLED eagerly so the nested Class.forName triggered by
+      // the parser's parseDynamic makes ByteBuddy's classLoaderMatcher return true for this
+      // loader, and the typeMatcher's hasSuperType match returns true for configured classes.
+      // publishLocked below re-confirms with the parsed configuration (idempotent overwrite).
+      ROOT_NAMES.set(Set.copyOf(methodsByClass.keySet()));
+      synchronized (RuntimeBridge.class) {
+        ENABLED.put(loader, Boolean.TRUE);
+        // Mark a placeholder state so the reentry guard at the top of initialize doesn't re-run
+        // for a class that is being loaded mid-parse. publishLocked will replace this with the
+        // real enabled RuntimeState. If the parse fails, the catch block rolls it back to
+        // DISABLED.
+        STATES.putIfAbsent(loader, DISABLED_REF);
+      }
+    } catch (final Throwable ignored) {
+      // Malformed Base64/XML here is fine — the real parse below will fail with the proper error.
+    }
+  }
+
+  private static Map<String, Set<String>> scanEnrichMethods(final String xml)
+      throws ConfigurationException {
+    final Element root = new ConfigurationParser().parseXmlDocument(xml.getBytes(StandardCharsets.UTF_8));
+    final Element dynamic = childByName(root, "dynamic");
+    if (dynamic == null) return Map.of();
+    final Map<String, Set<String>> methodsByClass = new HashMap<>();
+    for (final Element enrich : childrenByName(dynamic, "enrich")) {
+      final String className = enrich.getAttribute("class");
+      final String methodName = enrich.getAttribute("method");
+      if (className.isBlank() || methodName.isBlank()) continue;
+      methodsByClass.computeIfAbsent(className, ignored -> new HashSet<>()).add(methodName);
+    }
+    return methodsByClass;
+  }
+
+  private static Element childByName(final Element parent, final String name) {
+    for (final Element child : childrenByName(parent, null)) {
+      if (name == null || name.equals(child.getTagName())) return child;
+    }
+    return null;
+  }
+
+  private static List<Element> childrenByName(final Element parent, final String name) {
+    final List<Element> result = new ArrayList<>();
+    final org.w3c.dom.NodeList nodes = parent.getChildNodes();
+    for (int i = 0; i < nodes.getLength(); i++) {
+      final org.w3c.dom.Node node = nodes.item(i);
+      if (node.getNodeType() == org.w3c.dom.Node.ELEMENT_NODE
+          && (name == null || name.equals(node.getNodeName()))) {
+        result.add((Element) node);
       }
     }
+    return result;
   }
 
   public static ReloadResult reload(final String xml) {
@@ -154,7 +246,7 @@ public final class RuntimeBridge {
     final List<String> failures = new ArrayList<>();
     int updated = 0;
     int staticCount = 0;
-    int dynamicCount = 0;
+    int exitCount = 0;
 
     for (final ClassLoader loader : loaders) {
       try {
@@ -168,13 +260,13 @@ public final class RuntimeBridge {
         // and strong-pushes into EnrichmentRuntime.STATE. No strong publish here (would leak).
         updated++;
         staticCount = configuration.staticRules().size();
-        dynamicCount = configuration.dynamicRules().size();
+        exitCount = configuration.exitPoints().size();
       } catch (final ConfigurationException exception) {
         failures.add(category(exception));
       }
     }
 
-    return new ReloadResult(updated, staticCount, dynamicCount, failures);
+    return new ReloadResult(updated, staticCount, exitCount, failures);
   }
 
   private static String category(final ConfigurationException exception) {
@@ -214,8 +306,8 @@ public final class RuntimeBridge {
 
   // ponytail: strong Push the RuntimeState into the per-loader EnrichmentRuntime.STATE so that
   // the long-lived extension loader never holds the only strong reference to the Class<?> refs
-  // inside CompiledConfiguration/RuleIndex. Cold path (startup + reload). Fails harmlessly if
-  // EnrichmentRuntime isn't loaded yet — the first enrich() call will adopt via state(loader).
+  // inside CompiledConfiguration/ExitPointIndex. Cold path (startup + reload). Fails harmlessly
+  // if EnrichmentRuntime isn't loaded yet — the first enrich() call will adopt via state(loader).
   private static void forwardStateToApplicationClassloader(
       final ClassLoader loader, final RuntimeState state) {
     try {
@@ -243,11 +335,11 @@ public final class RuntimeBridge {
     System.getLogger(RuntimeBridge.class.getName())
         .log(
             System.Logger.Level.INFO,
-            "enabled static={0} dynamic={1} roots={2}",
+            "enabled static={0} exit-points={1} roots={2}",
             configuration.staticRules().size(),
-            configuration.dynamicRules().size(),
-            configuration.dynamicRules().stream()
-                .map(DynamicAttributeRule::rootClass)
+            configuration.exitPoints().size(),
+            configuration.exitPoints().stream()
+                .map(ExitPoint::rootClass)
                 .distinct()
                 .count());
   }
@@ -271,6 +363,10 @@ public final class RuntimeBridge {
     return ROOT_NAMES.get();
   }
 
+  public static Map<String, Set<String>> rootClassMethods() {
+    return ROOT_METHODS.get();
+  }
+
   public static void resetForTesting() {
     ConfigWebserver.stop();
     WEBSERVER_STARTED.set(false);
@@ -279,6 +375,7 @@ public final class RuntimeBridge {
       ENABLED.clear();
     }
     ROOT_NAMES.set(Set.of());
+    ROOT_METHODS.set(Map.of());
     ACTIVE_XML.set(null);
   }
 }

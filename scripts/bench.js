@@ -18,6 +18,18 @@ const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8081/cars';
 /** Random brands matching the agent's dynamic Car.brand config from run-agent.sh. */
 const BRANDS = ['bmw', 'audi', 'vw', 'mercedes', 'toyota', 'honda', 'ford', 'renault'];
 
+/** Random models so Car.model variation is realistic. */
+const MODELS = ['m3', 'a4', 'golf', 'c220', 'corolla', 'civic', 'focus', 'clio'];
+
+/** Random colours for Car.color. */
+const COLORS = ['red', 'blue', 'black', 'white', 'silver', 'green', 'yellow', 'grey'];
+
+/** Fuel types for Car.fuelType. */
+const FUELS = ['petrol', 'diesel', 'hybrid', 'electric'];
+
+/** Transmissions for Car.transmission. */
+const TRANSMISSIONS = ['manual', 'automatic'];
+
 /** Random passenger names so Car.passengers[1].name variation is realistic. */
 const NAMES = [
   'Jan', 'Piet', 'Kees', 'Maria', 'Anna', 'Tom', 'Eva', 'Liu', 'Hiro', 'Sofia',
@@ -55,8 +67,11 @@ function pick(arr) {
 }
 
 /**
- * Build a random car JSON body: a random brand + 2–3 passengers (so index [1] is always valid).
- * @returns {string} JSON string like {"brand":"bmw","passengers":[{"name":"Jan"},...]}
+ * Build a random car JSON body covering all 10 Car properties so every dynamic rule
+ * in the config (brand, model, year, color, licensePlate, vin, mileage, fuelType,
+ * transmission, passengers) has realistic data to resolve. Always 2–3 passengers
+ * so index [1] is valid.
+ * @returns {string} JSON string for POST /cars.
  */
 function randomCarJson() {
   const passengers = 2 + Math.floor(Math.random() * 2);
@@ -64,7 +79,18 @@ function randomCarJson() {
   for (let i = 0; i < passengers; i++) {
     list.push({ name: pick(NAMES) });
   }
-  return JSON.stringify({ brand: pick(BRANDS), passengers: list });
+  return JSON.stringify({
+    brand: pick(BRANDS),
+    model: pick(MODELS),
+    year: 1990 + Math.floor(Math.random() * 35),
+    color: pick(COLORS),
+    licensePlate: 'NL-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+    vin: 'WBA' + Math.floor(Math.random() * 1e12).toString().padStart(12, '0'),
+    mileage: Math.floor(Math.random() * 250000),
+    fuelType: pick(FUELS),
+    transmission: pick(TRANSMISSIONS),
+    passengers: list,
+  });
 }
 
 /**

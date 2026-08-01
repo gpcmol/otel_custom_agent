@@ -144,7 +144,7 @@ class ConfigWebserverTest {
 
     assertEquals(200, response.status());
     assertTrue(response.body().contains("static=1"));
-    assertTrue(response.body().contains("dynamic=1"));
+    assertTrue(response.body().contains("exit-points=1"));
     assertTrue(response.body().contains("classloaders=1"));
     assertFalse(response.body().contains("<configuration"));
 
@@ -330,9 +330,11 @@ class ConfigWebserverTest {
         + "<static><attribute key=\"team\" value=\""
         + team
         + "\"/></static>"
-        + "<dynamic><attribute key=\"brand\" path=\""
+        + "<dynamic><enrich class=\""
         + TEST_MODEL_CLASS
-        + ".brand\"/></dynamic>"
+        + "\" method=\"process\">"
+        + "<attribute key=\"brand\" path=\"$this.brand\"/>"
+        + "</enrich></dynamic>"
         + "</configuration>";
   }
 
@@ -397,5 +399,7 @@ class ConfigWebserverTest {
 
   public static final class TestModel {
     String brand = "cars";
+
+    public void process() {}
   }
 }

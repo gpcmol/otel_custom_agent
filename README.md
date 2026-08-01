@@ -18,18 +18,47 @@ Purpose is for development teams to define declarative configuration for dynamic
 - post data again the cars endpoint of the example application using app/car.http
 
 # Configuration
+
+Declare one **exit point** per span-producing method. Each `<enrich class method>` block bundles
+the attribute rules that apply when that method exits. Paths start from a configurable root:
+`$this` (receiver), `$argN` (Nth parameter, 0..127), or `$return` (return value). The rest of
+each path uses the existing property/index grammar (e.g. `passengers[1].name`).
+
 ```xml
 <configuration>
     <static>
         <attribute key="domain" value="cars"/>
         <attribute key="team" value="winning"/>
+        <attribute key="environment" value="production"/>
+        <attribute key="region" value="eu-west"/>
+        <attribute key="service" value="garage"/>
     </static>
     <dynamic>
-        <attribute key="brand" path="com.example.Car.brand"/>
-        <attribute key="passengers" path="com.example.Car.passengers[8].name" value="benzeen"/>
+        <enrich class="com.example.Garage" method="park">
+            <attribute key="brand" path="$arg0.brand"/>
+            <attribute key="model" path="$arg0.model"/>
+            <attribute key="year" path="$arg0.year"/>
+            <attribute key="color" path="$arg0.color"/>
+            <attribute key="licensePlate" path="$arg0.licensePlate"/>
+            <attribute key="vin" path="$arg0.vin"/>
+            <attribute key="mileage" path="$arg0.mileage"/>
+            <attribute key="fuelType" path="$arg0.fuelType"/>
+            <attribute key="transmission" path="$arg0.transmission"/>
+            <attribute key="passengers" path="$arg0.passengers[1].name"/>
+        </enrich>
     </dynamic>
 </configuration>
 ```
+
+Reads as: *"when `com.example.Garage.park` exits, read these properties from its first parameter
+and write them on the current span."* One enrich event per span-producing method exit.
+
+### Migrating from the previous flat form
+
+The previous flat `<dynamic><attribute path="com.example.Car.brand"/></dynamic>` form is no
+longer supported. Rewrite your `<dynamic>` section as one `<enrich class method>` block per
+exit-point method, with paths prefixed by `$this` / `$argN` / `$return`. The `<static>`
+section is unchanged.
 
 # Used tooling
 - opencode with gitnexus, ponytail and openspec

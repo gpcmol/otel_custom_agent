@@ -197,9 +197,9 @@ public final class ConfigWebserver {
     if (result.updatedClassloaders() > 0) {
       final String message =
           String.format(
-              "Activated: static=%d dynamic=%d classloaders=%d%s",
+              "Activated: static=%d exit-points=%d classloaders=%d%s",
               result.staticRuleCount(),
-              result.dynamicRuleCount(),
+              result.exitPointCount(),
               result.updatedClassloaders(),
               result.failures().isEmpty()
                   ? ""

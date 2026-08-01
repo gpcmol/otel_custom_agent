@@ -49,6 +49,14 @@ class ValueResolverTest {
     assertEquals("field-team", resolver.resolve(new Model(), List.of(new PropertySegment("team"))));
   }
 
+  @Test
+  void resolvesFromArbitraryRootObject() {
+    // ponytail: the resolver does not know whether its root was the receiver, a parameter, or a
+    // return value. Exit-point enrichment resolves the root via RootSource in EnrichmentRuntime
+    // then hands it here. This test fixes that contract: any non-null object works as a root.
+    assertEquals("Lisa", resolver.resolve(new Passenger("Lisa"), List.of(new PropertySegment("name"))));
+  }
+
   public static final class Model {
     public String brand = "field";
     public String team = "field-team";

@@ -33,7 +33,7 @@ class RuntimeBridgeReloadTest {
     assertTrue(result.succeeded());
     assertEquals(1, result.updatedClassloaders());
     assertEquals(1, result.staticRuleCount());
-    assertEquals(1, result.dynamicRuleCount());
+    assertEquals(1, result.exitPointCount());
 
     final RuntimeState state = RuntimeBridge.state(loader);
     assertTrue(state.enabled());
@@ -129,9 +129,11 @@ class RuntimeBridgeReloadTest {
         + "<static><attribute key=\"team\" value=\""
         + team
         + "\"/></static>"
-        + "<dynamic><attribute key=\"brand\" path=\""
+        + "<dynamic><enrich class=\""
         + rootClassName()
-        + ".brand\"/></dynamic>"
+        + "\" method=\"process\">"
+        + "<attribute key=\"brand\" path=\"$this.brand\"/>"
+        + "</enrich></dynamic>"
         + "</configuration>";
   }
 
@@ -141,5 +143,7 @@ class RuntimeBridgeReloadTest {
 
   public static final class TestModel {
     String brand = "cars";
+
+    public void process() {}
   }
 }

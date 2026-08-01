@@ -89,9 +89,11 @@ class RuntimeBridgeMemoryLeakTest {
   private static String configXml() {
     return "<configuration>"
         + "<static><attribute key=\"team\" value=\"leak\"/></static>"
-        + "<dynamic><attribute key=\"brand\" path=\""
+        + "<dynamic><enrich class=\""
         + TEST_MODEL_NAME
-        + ".brand\"/></dynamic>"
+        + "\" method=\"process\">"
+        + "<attribute key=\"brand\" path=\"$this.brand\"/>"
+        + "</enrich></dynamic>"
         + "</configuration>";
   }
 
@@ -115,5 +117,7 @@ class RuntimeBridgeMemoryLeakTest {
 
   public static final class TestModel {
     String brand = "leak";
+
+    public void process() {}
   }
 }

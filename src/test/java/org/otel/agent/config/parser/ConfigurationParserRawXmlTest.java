@@ -20,7 +20,10 @@ class ConfigurationParserRawXmlTest {
                     <attribute key="team" value="cars"/>
                 </static>
                 <dynamic>
-                    <attribute key="brand" path="org.otel.agent.config.parser.ConfigurationParserRawXmlTest$TestModel.brand"/>
+                    <enrich class="org.otel.agent.config.parser.ConfigurationParserRawXmlTest$TestModel"
+                            method="process">
+                        <attribute key="brand" path="$this.brand"/>
+                    </enrich>
                 </dynamic>
             </configuration>
             """;
@@ -29,8 +32,8 @@ class ConfigurationParserRawXmlTest {
 
     assertEquals(1, configuration.staticRules().size());
     assertEquals("cars", configuration.staticRules().getFirst().value());
-    assertEquals(1, configuration.dynamicRules().size());
-    assertEquals("brand", configuration.dynamicRules().getFirst().key());
+    assertEquals(1, configuration.exitPoints().size());
+    assertEquals("brand", configuration.exitPoints().getFirst().rules().getFirst().key());
   }
 
   @Test
@@ -39,7 +42,7 @@ class ConfigurationParserRawXmlTest {
         parser.parseXml("<configuration/>", getClass().getClassLoader());
 
     assertTrue(configuration.staticRules().isEmpty());
-    assertTrue(configuration.dynamicRules().isEmpty());
+    assertTrue(configuration.exitPoints().isEmpty());
   }
 
   @Test
@@ -80,7 +83,8 @@ class ConfigurationParserRawXmlTest {
         () ->
             parser.parseXml(
                 "<configuration><static><attribute key='dup' value='a'/></static>"
-                    + "<dynamic><attribute key='dup' path='org.otel.agent.config.parser.ConfigurationParserRawXmlTest$TestModel.brand'/></dynamic></configuration>",
+                    + "<dynamic><enrich class='org.otel.agent.config.parser.ConfigurationParserRawXmlTest$TestModel' method='process'>"
+                    + "<attribute key='dup' path='$this.brand'/></enrich></dynamic></configuration>",
                 getClass().getClassLoader()));
   }
 
@@ -90,7 +94,8 @@ class ConfigurationParserRawXmlTest {
         ConfigurationException.class,
         () ->
             parser.parseXml(
-                "<configuration><dynamic><attribute key='bad' path='no_dot_path'/></dynamic></configuration>",
+                "<configuration><dynamic><enrich class='org.otel.agent.config.parser.ConfigurationParserRawXmlTest$TestModel' method='process'>"
+                    + "<attribute key='bad' path='no_dot_path'/></enrich></dynamic></configuration>",
                 getClass().getClassLoader()));
   }
 
@@ -100,7 +105,8 @@ class ConfigurationParserRawXmlTest {
         ConfigurationException.class,
         () ->
             parser.parseXml(
-                "<configuration><dynamic><attribute key='bad' path='com.nonexistent.Foo.bar'/></dynamic></configuration>",
+                "<configuration><dynamic><enrich class='com.nonexistent.Foo' method='process'>"
+                    + "<attribute key='bad' path='$this.bar'/></enrich></dynamic></configuration>",
                 getClass().getClassLoader()));
   }
 
@@ -124,10 +130,12 @@ class ConfigurationParserRawXmlTest {
         parser.parseXml("<configuration/>", getClass().getClassLoader());
 
     assertThrows(UnsupportedOperationException.class, () -> configuration.staticRules().add(null));
-    assertThrows(UnsupportedOperationException.class, () -> configuration.dynamicRules().add(null));
+    assertThrows(UnsupportedOperationException.class, () -> configuration.exitPoints().add(null));
   }
 
   public static final class TestModel {
     String brand = "cars";
+
+    public void process() {}
   }
 }

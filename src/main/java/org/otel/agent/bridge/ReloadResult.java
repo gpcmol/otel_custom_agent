@@ -12,7 +12,7 @@ import java.util.List;
  *       successfully republished with the new configuration</li>
  *   <li>{@code staticRuleCount} — static rule count from the last successfully published
  *       configuration (0 if no loader was updated)</li>
- *   <li>{@code dynamicRuleCount} — dynamic rule count from the last successfully published
+ *   <li>{@code exitPointCount} — exit-point count from the last successfully published
  *       configuration (0 if no loader was updated)</li>
  *   <li>{@code failures} — per-loader failure messages for class loaders where reload failed;
  *       each message is the category extracted from the {@link ConfigurationException}</li>
@@ -23,7 +23,7 @@ import java.util.List;
  * specific failure messages.
  */
 public record ReloadResult(
-    int updatedClassloaders, int staticRuleCount, int dynamicRuleCount, List<String> failures) {
+    int updatedClassloaders, int staticRuleCount, int exitPointCount, List<String> failures) {
   public ReloadResult {
     failures = List.copyOf(failures);
   }

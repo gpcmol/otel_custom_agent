@@ -8,12 +8,13 @@ import java.util.List;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.bridge.RuntimeState;
 import org.otel.agent.config.model.CompiledConfiguration;
-import org.otel.agent.config.model.DynamicAttributeRule;
+import org.otel.agent.config.model.ExitRule;
+import org.otel.agent.config.model.RootSource;
 import org.otel.agent.config.model.StaticAttributeRule;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
 import org.otel.agent.runtime.accessor.AccessorCache;
-import org.otel.agent.runtime.model.RuleIndex;
+import org.otel.agent.runtime.model.ExitPointIndex;
 import org.otel.agent.runtime.resolver.ValueResolver;
 import org.otel.agent.telemetry.AttributeConverter;
 import org.otel.agent.telemetry.AttributeValue;
@@ -24,15 +25,21 @@ import org.otel.agent.telemetry.SpanWriter;
  * and writes the results as span attributes.
  *
  * <p>Entry point: called from instrumentation advice via {@link
- * org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation.TraceAttributeAdvice}. The
- * {@link #enrich(Object)} method:
+ * org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation.TraceAttributeAdvice} on the
+ * exit of a declared {@code <enrich class method>}. The
+ * {@link #enrich(Object, Object[], Object, String)} method:
  *
  * <ol>
  *   <li>Initializes the agent bridge on first call (lazy startup)
  *   <li>Reads the per-loader {@link #STATE} snapshot (a single volatile read — no class-loader
  *       lookup on the hot path after warmup)
- *   <li>Writes static attributes (cached per configuration identity) and dynamic attributes
- *       (resolved per receiver via {@link ValueResolver}) to the current span
+ *   <li>Selects the applicable {@link ExitRule}s for {@code (receiver.getClass(), methodName)}
+ *       via {@link ExitPointIndex#find}
+ *   <li>For each rule, resolves the root from the {@link RootSource} anchor
+ *       ({@code $this} / {@code $argN} / {@code $return}) and walks the segments via
+ *       {@link ValueResolver}
+ *   <li>Writes static attributes (cached per configuration identity) and resolved dynamic
+ *       attributes to the current span — once per enrich event
  * </ol>
  *
  * <p>Fallback: if no valid span context is available (e.g. outside a trace), a fallback {@code
@@ -48,10 +55,10 @@ import org.otel.agent.telemetry.SpanWriter;
  * <p>State ownership (memory-leak guard): {@link #STATE} lives in <em>this</em> class, which is
  * injected per application class loader. It holds the only <strong>strong</strong> reference to the
  * active {@link RuntimeState} (and hence to the {@code Class<?>} refs in {@link
- * CompiledConfiguration}/{@link org.otel.agent.runtime.model.RuleIndex}). When the loader is
- * unloaded the statics die with it. The bridge ({@link RuntimeBridge}, in the long-lived agent
- * extension class loader) keeps only a {@link java.lang.ref.WeakReference} to this state, so it can
- * never pin a dead loader's classes — the historical Metaspace leak on hot-redeploy.
+ * CompiledConfiguration}/{@link ExitPointIndex}). When the loader is unloaded the statics die
+ * with it. The bridge ({@link RuntimeBridge}, in the long-lived agent extension class loader)
+ * keeps only a {@link java.lang.ref.WeakReference} to this state, so it can never pin a dead
+ * loader's classes — the historical Metaspace leak on hot-redeploy.
  *
  * <p>Failure isolation: all exceptions are swallowed — enrichment must never affect application
  * behavior. Individual dynamic rule failures do not block other rules.
@@ -66,7 +73,7 @@ public final class EnrichmentRuntime {
   private static volatile boolean initialized;
 
   // ponytail: per-loader sterke houder van RuntimeState. Staat in de app-loader (deze class
-  // wordt per app-loader geïnjecteerd), dus de Class<?> refs in CompiledConfiguration/RuleIndex
+  // wordt per app-loader geïnjecteerd), dus de Class<?> refs in CompiledConfiguration/ExitPointIndex
   // sterven met de loader. RuntimeBridge houdt enkel WeakReference<RuntimeState> bij.
   private static volatile RuntimeState STATE = RuntimeState.disabled();
 
@@ -85,7 +92,7 @@ public final class EnrichmentRuntime {
     return STATE;
   }
 
-  public static void enrich(final Object receiver) {
+  public static void enrich(final Object receiver, final Object[] arguments, final Object returned, final String methodName) {
     if (receiver == null) return;
     if (ENRICHING.get()) return;
     ENRICHING.set(true);
@@ -101,14 +108,18 @@ public final class EnrichmentRuntime {
         if (fromBridge.enabled() && fromBridge != STATE) STATE = fromBridge;
         initialized = true;
       }
-      final RuntimeState state = STATE;
-      if (!state.enabled()) return;
-      final Span current = Span.current();
+final RuntimeState state = STATE;
+    if (!state.enabled()) return;
+    // ponytail: short-circuit before fetching the span — most calls are on methods that are not
+    // configured exit points. ExitPointIndex.find is a bounded FIFO cache hit (O(1)) after warmup.
+    final List<ExitRule> rules = state.exitIndex().find(receiver.getClass(), methodName);
+    if (rules.isEmpty()) return;
+    final Span current = Span.current();
       if (current.getSpanContext().isValid()) {
-        write(current, receiver, state);
+        write(current, receiver, arguments, returned, rules, state);
         return;
       }
-      createFallback(receiver, state);
+      createFallback(receiver, arguments, returned, rules, state);
     } catch (final Throwable ignored) {
       // Enrichment must never affect application behavior.
     } finally {
@@ -120,12 +131,12 @@ public final class EnrichmentRuntime {
     final ClassLoader applicationLoader = EnrichmentRuntime.class.getClassLoader();
     final CompiledConfiguration configuration =
         new ConfigurationParser().parseXml(xml, applicationLoader);
-    final RuleIndex ruleIndex = new RuleIndex(configuration);
-    setState(RuntimeState.enabled(configuration, ruleIndex));
+    final ExitPointIndex exitIndex = new ExitPointIndex(configuration);
+    setState(RuntimeState.enabled(configuration, exitIndex));
     RuntimeBridge.publish(applicationLoader, configuration, xml);
   }
 
-  private static void createFallback(final Object receiver, final RuntimeState state) {
+  private static void createFallback(final Object receiver, final Object[] arguments, final Object returned, final List<ExitRule> rules, final RuntimeState state) {
     Span span = null;
     try {
       span =
@@ -133,7 +144,7 @@ public final class EnrichmentRuntime {
               .spanBuilder("otel.custom-agent.enrichment")
               .setSpanKind(SpanKind.INTERNAL)
               .startSpan();
-      write(span, receiver, state);
+      write(span, receiver, arguments, returned, rules, state);
     } catch (final Throwable ignored) {
       System.getLogger(EnrichmentRuntime.class.getName())
           .log(System.Logger.Level.WARNING, "fallback span creation failed");
@@ -148,7 +159,7 @@ public final class EnrichmentRuntime {
   private static volatile String[] staticKeys;
   private static volatile AttributeValue[] staticValues;
 
-  private static void write(final Span span, final Object receiver, final RuntimeState state) {
+  private static void write(final Span span, final Object receiver, final Object[] arguments, final Object returned, final List<ExitRule> rules, final RuntimeState state) {
     if (state != cachedState) {
       buildStaticCache(state);
       cachedState = state;
@@ -158,14 +169,25 @@ public final class EnrichmentRuntime {
     for (int i = 0; i < keys.length; i++) {
       WRITER.write(span, keys[i], attrs[i]);
     }
-    for (final DynamicAttributeRule rule : state.ruleIndex().applicable(receiver.getClass())) {
+    for (final ExitRule rule : rules) {
       try {
-        final Object resolved = RESOLVER.resolve(receiver, rule.segments());
+        final Object root = rootOf(rule.rootSource(), receiver, arguments, returned);
+        if (root == null) continue;
+        final Object resolved = RESOLVER.resolve(root, rule.segments());
         WRITER.write(span, rule.key(), CONVERTER.convert(resolved));
       } catch (final Throwable ignored) {
         // One broken rule must not block the remaining rules.
       }
     }
+  }
+
+  private static Object rootOf(
+      final RootSource rootSource, final Object receiver, final Object[] arguments, final Object returned) {
+    return switch (rootSource) {
+      case RootSource.This ignored -> receiver;
+      case RootSource.Argument arg -> arg.index() < arguments.length ? arguments[arg.index()] : null;
+      case RootSource.ReturnValue ignored -> returned;
+    };
   }
 
   private static synchronized void buildStaticCache(final RuntimeState state) {

@@ -21,7 +21,10 @@ class ConfigurationParserTest {
                 <attribute key="team" value="cars"/>
             </static>
             <dynamic>
-                <attribute key="brand" path="org.otel.agent.config.parser.ConfigurationParserTest$TestModel.brand"/>
+                <enrich class="org.otel.agent.config.parser.ConfigurationParserTest$TestModel"
+                        method="process">
+                    <attribute key="brand" path="$this.brand"/>
+                </enrich>
             </dynamic>
         </configuration>
         """;
@@ -33,7 +36,9 @@ class ConfigurationParserTest {
     assertEquals(
         "brand",
         configuration
-            .dynamicRules()
+            .exitPoints()
+            .getFirst()
+            .rules()
             .getFirst()
             .segments()
             .getFirst()
@@ -54,7 +59,7 @@ class ConfigurationParserTest {
   void missingConfigurationIsEmpty() throws Exception {
     final CompiledConfiguration configuration = parser.parse(null, getClass().getClassLoader());
     assertEquals(0, configuration.staticRules().size());
-    assertEquals(0, configuration.dynamicRules().size());
+    assertEquals(0, configuration.exitPoints().size());
   }
 
   private static String encoded(final String value) {
@@ -63,5 +68,7 @@ class ConfigurationParserTest {
 
   public static final class TestModel {
     public String brand = "cars";
+
+    public void process() {}
   }
 }

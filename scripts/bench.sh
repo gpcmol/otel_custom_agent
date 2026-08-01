@@ -22,9 +22,12 @@ AGENT_JAR="$ROOT_DIR/build/otel/opentelemetry-javaagent.jar"
 APP_JAR="$ROOT_DIR/app/target/garage-1.0-SNAPSHOT.jar"
 TELEMETRY_LOG="$ROOT_DIR/telemetry.log"
 
-# run-agent.sh line 20 Base64 config: static domain=cars, team=winning; dynamic Car.brand,
-# Car.passengers[1].name. Set as OTEL_CUSTOM_AGENT_CONFIG for the enabled run; omitted for disabled.
-AGENT_CONFIG_B64="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICA8L3N0YXRpYz4KICAgIDxkeW5hbWljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJicmFuZCIgcGF0aD0iY29tLmV4YW1wbGUuQ2FyLmJyYW5kIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InBhc3NlbmdlcnMiIHBhdGg9ImNvbS5leGFtcGxlLkNhci5wYXNzZW5nZXJzWzFdLm5hbWUiLz4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPg=="
+# run-agent.sh line 20 Base64 config: 5 static (domain, team, environment, region, service)
+# and 10 dynamic rules on the com.example.Garage.park exit point — Car is passed as $arg0
+# (brand, model, year, color, licensePlate, vin, mileage, fuelType, transmission,
+# passengers[1].name). Set as OTEL_CUSTOM_AGENT_CONFIG for the enabled run; omitted for
+# disabled. One enrich event per park call (vs the previous per-getter model's ten).
+AGENT_CONFIG_B64="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9ImVudmlyb25tZW50IiB2YWx1ZT0icHJvZHVjdGlvbiIvPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJyZWdpb24iIHZhbHVlPSJldS13ZXN0Ii8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InNlcnZpY2UiIHZhbHVlPSJnYXJhZ2UiLz4KICAgIDwvc3RhdGljPgogICAgPGR5bmFtaWM+CiAgICAgICAgPGVucmljaCBjbGFzcz0iY29tLmV4YW1wbGUuR2FyYWdlIiBtZXRob2Q9InBhcmsiPgogICAgICAgICAgICA8YXR0cmlidXRlIGtleT0iYnJhbmQiIHBhdGg9IiRhcmcwLmJyYW5kIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJtb2RlbCIgcGF0aD0iJGFyZzAubW9kZWwiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InllYXIiIHBhdGg9IiRhcmcwLnllYXIiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9ImNvbG9yIiBwYXRoPSIkYXJnMC5jb2xvciIvPgogICAgICAgICAgICA8YXR0cmlidXRlIGtleT0ibGljZW5zZVBsYXRlIiBwYXRoPSIkYXJnMC5saWNlbnNlUGxhdGUiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InZpbiIgcGF0aD0iJGFyZzAudmluIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJtaWxlYWdlIiBwYXRoPSIkYXJnMC5taWxlYWdlIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJmdWVsVHlwZSIgcGF0aD0iJGFyZzAuZnVlbFR5cGUiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRyYW5zbWlzc2lvbiIgcGF0aD0iJGFyZzAudHJhbnNtaXNzaW9uIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJwYXNzZW5nZXIxIiBwYXRoPSIkYXJnMC5wYXNzZW5nZXJzWzFdLm5hbWUiLz4KICAgICAgICA8L2VucmljaD4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPgo="
 
 HOST=127.0.0.1
 STUB_PORT=4318
@@ -116,6 +119,26 @@ wait_port_free() {
   return 1
 }
 
+# free_port <port> — kill listeners on <port>; SIGTERM, then SIGKILL after 1s. Idempotent.
+free_port() {
+  local port="$1"; local pids
+  pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  log "  Port $port in use by pid $pids — killing..."
+  kill $pids 2>/dev/null || true
+  sleep 1
+  pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  kill -9 $pids 2>/dev/null || true
+  sleep 1
+}
+
+free_required_ports() {
+  free_port "$STUB_PORT"
+  free_port "$APP_PORT"
+  free_port 14317
+}
+
 # start_stub — launch the OTLP stub as a background JVM, wait until ready.
 start_stub() {
   log "Starting OTLP stub on $HOST:$STUB_PORT..."
@@ -165,7 +188,7 @@ stop_app() {
     wait "$APP_PID" 2>/dev/null || true
     APP_PID=""
   fi
-  wait_port_free "$APP_PORT"
+  wait_port_free "$APP_PORT" || free_port "$APP_PORT"
 }
 
 # delete_garage — best-effort DELETE /cars to reset the in-memory garage between phases.
@@ -240,10 +263,14 @@ run_mode() {
 # Verify
 # ==============================================================================
 
-# verify_attributes — check telemetry.log for brand, domain, team; print PASS or FAIL.
+# verify_attributes — check telemetry.log for all configured attribute keys; print PASS or FAIL.
+# Covers the 5 static keys + a representative dynamic key (brand) so the verify run confirms
+# the 10-dynamic / 5-static configuration is actually being applied at runtime.
 verify_attributes() {
   local ok=0
-  for attr in brand domain team; do
+  local total=0
+  for attr in domain team environment region service brand; do
+    total=$((total + 1))
     if [ -f "$TELEMETRY_LOG" ] && grep -q "$attr" "$TELEMETRY_LOG"; then
       log "    + $attr present"
       ok=$((ok + 1))
@@ -251,10 +278,10 @@ verify_attributes() {
       log "    x $attr MISSING"
     fi
   done
-  if [ "$ok" -eq 3 ]; then
+  if [ "$ok" -eq "$total" ]; then
     printf 'enrichment_attributes: PASS\n'
   else
-    printf 'enrichment_attributes: FAIL (%s/3)\n' "$ok"
+    printf 'enrichment_attributes: FAIL (%s/%s)\n' "$ok" "$total"
   fi
 }
 
@@ -317,6 +344,7 @@ enabled_score=""
 disabled_score=""
 
 if [ "$MODE" = "all" ] || [ "$MODE" = "enabled" ] || [ "$MODE" = "disabled" ]; then
+  free_required_ports
   start_stub
   if [ "$MODE" = "all" ] || [ "$MODE" = "enabled" ]; then
     enabled_score="$(run_mode "enabled")"
@@ -366,6 +394,7 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "enabled" ] || [ "$MODE" = "disabled" ]; t
 fi
 
 if [ "$MODE" = "all" ] || [ "$MODE" = "verify" ]; then
+  free_required_ports
   start_stub
   verify_status="$(run_verify)"
   cleanup

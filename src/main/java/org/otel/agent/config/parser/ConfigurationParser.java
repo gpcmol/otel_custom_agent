@@ -1,9 +1,9 @@
 package org.otel.agent.config.parser;
 
 import java.io.ByteArrayInputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -11,10 +11,12 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.otel.agent.config.model.CompiledConfiguration;
-import org.otel.agent.config.model.DynamicAttributeRule;
+import org.otel.agent.config.model.ExitPoint;
+import org.otel.agent.config.model.ExitRule;
 import org.otel.agent.config.model.IndexedPropertySegment;
 import org.otel.agent.config.model.PathSegment;
 import org.otel.agent.config.model.PropertySegment;
+import org.otel.agent.config.model.RootSource;
 import org.otel.agent.config.model.StaticAttributeRule;
 import org.otel.agent.utils.Base64Util;
 import org.w3c.dom.Document;
@@ -36,10 +38,15 @@ import org.xml.sax.InputSource;
  * attacks. The document root must be a namespace-less {@code <configuration>} element with
  * optional {@code <static>} and {@code <dynamic>} sections.
  *
- * <p>Dynamic rules use dot-separated paths (e.g. {@code com.example.Foo.bar.baz[0].name})
- * that are resolved against the application class loader. The parser tries progressively
- * shorter class-name prefixes until {@link Class#forName} succeeds, then parses the
- * remaining segments into {@link PropertySegment} or {@link IndexedPropertySegment} instances.
+ * <p>Dynamic rules are grouped into {@code <enrich class method>} blocks; one block per
+ * declared exit-point method. Each block contains {@code <attribute key path>} children whose
+ * {@code path} begins with a root-source prefix — {@code $this}, {@code $argN} (decimal
+ * non-negative index), or {@code $return} — followed by dot-separated property segments using
+ * the existing {@link PathSegment} grammar (e.g. {@code $arg0.passengers[1].name}). The
+ * {@code <enrich class>} value MUST be a fully qualified Java class name resolvable in the
+ * configured application classloader; {@code <enrich method>} MUST be a Java identifier naming
+ * at least one method on that class (any parameter arity). Duplicate {@code (class, method)}
+ * pairs are rejected.
  *
  * <p>All validation errors are wrapped in {@link ConfigurationException} so callers can
  * distinguish parse failures from successful compilation.
@@ -69,11 +76,11 @@ public final class ConfigurationParser {
     validateElement(root);
     final Set<String> keys = new HashSet<>();
     final List<StaticAttributeRule> staticRules = parseStatic(root, keys);
-    final List<DynamicAttributeRule> dynamicRules = parseDynamic(root, keys, loader);
-    return new CompiledConfiguration(staticRules, dynamicRules);
+    final List<ExitPoint> exitPoints = parseDynamic(root, keys, loader);
+    return new CompiledConfiguration(staticRules, exitPoints);
   }
 
-  private Element parseXmlDocument(final byte[] bytes) throws ConfigurationException {
+  public Element parseXmlDocument(final byte[] bytes) throws ConfigurationException {
     try {
       final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
       factory.setNamespaceAware(true);
@@ -110,40 +117,90 @@ public final class ConfigurationParser {
     return rules;
   }
 
-  private List<DynamicAttributeRule> parseDynamic(
+  private List<ExitPoint> parseDynamic(
       final Element root, final Set<String> keys, final ClassLoader applicationLoader)
       throws ConfigurationException {
     final Element section = child(root, "dynamic");
     if (section == null) return List.of();
-    validateChildren(section, "attribute");
-    final List<DynamicAttributeRule> rules = new ArrayList<>();
-    for (final Element element : children(section, "attribute")) {
-      validateAttributes(element, Set.of("key", "path"));
-      final String key = required(element, "key");
-      final String path = required(element, "path");
-      validateKey(key, keys);
-      rules.add(parseRule(key, path, applicationLoader));
+    if (!children(section, "attribute").isEmpty()) {
+      throw new ConfigurationException(
+          "dynamic section requires <enrich class method> blocks; the flat <attribute path=...> "
+              + "form is no longer supported");
     }
-    return rules;
+    validateChildren(section, "enrich");
+    final Set<String> seenExitPoints = new HashSet<>();
+    final List<ExitPoint> exitPoints = new ArrayList<>();
+    for (final Element enrichElement : children(section, "enrich")) {
+      validateAttributes(enrichElement, Set.of("class", "method"));
+      final String className = required(enrichElement, "class");
+      final String methodName = required(enrichElement, "method");
+      validateIdentifier(methodName);
+      final String exitKey = className + "#" + methodName;
+      if (!seenExitPoints.add(exitKey)) {
+        throw new ConfigurationException("duplicate exit point: " + exitKey);
+      }
+      final Class<?> rootClass;
+      try {
+        rootClass = Class.forName(className, false, applicationLoader);
+      } catch (final ClassNotFoundException e) {
+        throw new ConfigurationException("exit-point class cannot be resolved: " + className);
+      }
+      verifyMethodExists(rootClass, methodName, className);
+      validateChildren(enrichElement, "attribute");
+      final List<ExitRule> rules = new ArrayList<>();
+      for (final Element attribute : children(enrichElement, "attribute")) {
+        validateAttributes(attribute, Set.of("key", "path"));
+        final String key = required(attribute, "key");
+        final String path = required(attribute, "path");
+        validateKey(key, keys);
+        rules.add(parseExitRule(key, path));
+      }
+      exitPoints.add(new ExitPoint(rootClass, className, methodName, rules));
+    }
+    return exitPoints;
   }
 
-  private DynamicAttributeRule parseRule(
-      final String key, final String path, final ClassLoader loader) throws ConfigurationException {
-    final String[] parts = path.split("\\.", -1);
-    if (parts.length < 2) throw new ConfigurationException("path has no root or property");
-    for (int boundary = parts.length - 1; boundary > 0; boundary--) {
-      final String className = String.join(".", Arrays.copyOf(parts, boundary));
-      try {
-        final Class<?> rootClass = Class.forName(className, false, loader);
-        final List<PathSegment> segments = new ArrayList<>();
-        for (int i = boundary; i < parts.length; i++) segments.add(parseSegment(parts[i]));
-        if (segments.isEmpty()) throw new ConfigurationException("path has no property");
-        return new DynamicAttributeRule(key, className, rootClass, segments);
-      } catch (final ClassNotFoundException ignored) {
-        // Try the next shorter class-name prefix.
-      }
+  private void verifyMethodExists(
+      final Class<?> type, final String methodName, final String className)
+      throws ConfigurationException {
+    for (final Method method : type.getMethods()) {
+      if (method.getName().equals(methodName)) return;
     }
-    throw new ConfigurationException("root class cannot be resolved");
+    throw new ConfigurationException(
+        "exit-point method not found: " + className + "#" + methodName);
+  }
+
+  private ExitRule parseExitRule(final String key, final String path)
+      throws ConfigurationException {
+    final int dot = path.indexOf('.');
+    if (dot < 0) throw new ConfigurationException("path has no root or property");
+    final RootSource rootSource = parseRootSource(path.substring(0, dot));
+    final String rest = path.substring(dot + 1);
+    if (rest.isEmpty()) throw new ConfigurationException("path has no property");
+    final String[] parts = rest.split("\\.", -1);
+    final List<PathSegment> segments = new ArrayList<>();
+    for (final String part : parts) segments.add(parseSegment(part));
+    return new ExitRule(key, rootSource, segments);
+  }
+
+  private RootSource parseRootSource(final String token) throws ConfigurationException {
+    if ("$this".equals(token)) return new RootSource.This();
+    if ("$return".equals(token)) return new RootSource.ReturnValue();
+    if (token.startsWith("$arg")) {
+      final String digits = token.substring(4);
+      if (digits.isEmpty()) throw new ConfigurationException("$arg requires a non-negative index");
+      final int index;
+      try {
+        index = Integer.parseInt(digits);
+      } catch (final NumberFormatException e) {
+        throw new ConfigurationException("invalid $arg index: " + token);
+      }
+      if (index < 0 || index > 127) {
+        throw new ConfigurationException("$arg index out of range (0..127): " + token);
+      }
+      return new RootSource.Argument(index);
+    }
+    throw new ConfigurationException("unknown root source: " + token);
   }
 
   private PathSegment parseSegment(final String value) throws ConfigurationException {

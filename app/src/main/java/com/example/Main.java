@@ -16,8 +16,11 @@ public class Main {
 
     private static final int port = 8081;
     private static final ObjectMapper mapper = new ObjectMapper();
-    private static final List<Car> garage = Collections.synchronizedList(new ArrayList<>());
-    private static final Garage demoGarage = new Garage(List.of(new Customer("Jan", "Amsterdam")));
+    // ponytail: one Garage holds customers (read-only) + parkedCars (mutable list written by park).
+    // The agent instruments Garage.park as the configured exit point; the handler delegates every
+    // POST to it and the agent enriches the current span once at park's exit.
+    private static final Garage demoGarage =
+        new Garage(List.of(new Customer("Jan", "Amsterdam")), Collections.synchronizedList(new ArrayList<>()));
 
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -36,8 +39,8 @@ public class Main {
                 // GET /cars → lijst van alle cars
                 demoGarage.getCustomers();
                 final String json;
-                synchronized (garage) {
-                    json = mapper.writeValueAsString(garage);
+                synchronized (demoGarage.parkedCars()) {
+                    json = mapper.writeValueAsString(demoGarage.parkedCars());
                 }
                 send(exchange, 200, "application/json", json);
 
@@ -45,15 +48,17 @@ public class Main {
                 // POST /cars → body: {"brand":"..."}
                 final String body = new String(exchange.getRequestBody().readAllBytes());
                 final Car car = mapper.readValue(body, Car.class);
-                car.getBrand();
-                car.getPassengers();
-                garage.add(car);
+                // ponytail: Garage.park is the agent's configured exit point. The agent enriches
+                // the active span once at its exit. The previous explicit car.getX() calls are
+                // gone — they existed only to force per-getter instrumentation; the exit-point
+                // model needs a single semantic boundary call instead.
+                demoGarage.park(car);
                 send(exchange, 201, "application/json", "{\"status\":\"added\"}");
 
             } else if ("DELETE".equals(method)) {
                 // DELETE /cars → leeg de garage (gebruikt door benchmark tussen fasen)
-                synchronized (garage) {
-                    garage.clear();
+                synchronized (demoGarage.parkedCars()) {
+                    demoGarage.parkedCars().clear();
                 }
                 sendNoContent(exchange);
 
