@@ -1,5 +1,6 @@
 package org.otel.agent.bridge;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ import org.otel.agent.webserver.ConfigWebserver;
  * Bridge between the agent extension class loader and application class loaders.
  *
  * <p>ClassLoader architecture:
+ *
  * <pre>
  * ┌─────────────────────────────────────────────────────────────┐
  * │ JVM bootstrap                                               │
@@ -43,36 +45,54 @@ import org.otel.agent.webserver.ConfigWebserver;
  * </pre>
  *
  * <p>Configuration flow:
+ *
  * <ol>
- *   <li>At startup, {@link #initialize(ClassLoader)} is called from instrumentation advice
- *       (running in the application class loader). It reads the {@code OTEL_CUSTOM_AGENT_CONFIG}
- *       env var, Base64-decodes it, and parses it into a {@link CompiledConfiguration} using
- *       the <em>application</em> class loader (so dynamic rule paths can resolve app classes).</li>
- *   <li>The compiled configuration is published as an immutable {@link RuntimeState} into the
- *       {@code STATES} map, keyed by the application class loader.</li>
- *   <li>At method-exit, the instrumentation advice calls {@link #state(ClassLoader)} to look up
- *       the current {@link RuntimeState} for the receiver's class loader, then calls
- *       {@link org.otel.agent.runtime.EnrichmentRuntime#enrich(Object)} via reflection.</li>
- *   <li>On reload (HTTP POST to the config webserver), {@link #reload(String)} re-parses the
- *       XML for <em>each</em> registered application class loader, publishes a new
- *       {@link RuntimeState}, and forwards the XML to
- *       {@link org.otel.agent.runtime.EnrichmentRuntime#reloadFromBridge(String)} in the
- *       application class loader so the runtime cache is rebuilt there.</li>
+ *   <li>At startup, {@link #initialize(ClassLoader)} is called from the OTel agent's
+ *       classLoaderMatcher (running in the agent extension class loader). It reads the {@code
+ *       OTEL_CUSTOM_AGENT_CONFIG} env var, Base64-decodes it, and parses it into a {@link
+ *       CompiledConfiguration} using the <em>application</em> class loader (so dynamic rule paths
+ *       can resolve app classes).
+ *   <li>The compiled configuration is published as an immutable {@link RuntimeState}: the bridge
+ *       keeps a <em>weak</em> reference (keyed by the application class loader), and also reflects
+ *       a <em>strong</em> copy into {@link org.otel.agent.runtime.EnrichmentRuntime#setState} in
+ *       the application class loader. That strong copy is the only thing keeping the {@code
+ *       Class<?>} refs in {@link CompiledConfiguration}/{@link RuleIndex} alive; when the loader is
+ *       unloaded, those classes die with it. The bridge's weak entry auto-clears via {@link
+ *       WeakHashMap}. This breaks the historical Metaspace leak under hot-redeploy (previous
+ *       versions stored the state <em>strongly</em> in the long-lived extension loader, pinning
+ *       dead application loaders forever).
+ *   <li>At method-exit, the instrumentation advice reads {@link
+ *       org.otel.agent.runtime.EnrichmentRuntime#state()} directly — a single volatile read, no
+ *       {@link #state(ClassLoader)} lookup on the hot path. If reflection strong-push failed at
+ *       classLoaderMatcher time (EnrichmentRuntime not loaded yet there), the first enrichment call
+ *       adopts the weak-held state from the bridge before GC can reclaim it.
+ *   <li>On reload (HTTP POST to the config webserver), {@link #reload(String)} re-parses the XML
+ *       for <em>each</em> registered application class loader, forwards the XML to {@link
+ *       org.otel.agent.runtime.EnrichmentRuntime#reloadFromBridge(String)} (which runs in the
+ *       application class loader, rebuilds the rule index, and {@code setState}s the new snapshot
+ *       there), then calls back into {@link #publish} to refresh the bridge's weak entry, {@code
+ *       ROOT_NAMES}, and {@code ACTIVE_XML}.
  * </ol>
  *
- * <p>Thread safety: all mutations to {@code STATES}, {@code ROOT_NAMES}, and {@code ACTIVE_XML}
- * are guarded by {@code synchronized(RuntimeBridge.class)}. The {@code state(ClassLoader)}
- * lookup uses a single-entry volatile cache ({@code memoLoader}/{@code memoState}) for the
- * common case where advice repeatedly reads state for the same loader.
+ * <p>Thread safety: all mutations to {@code STATES}, {@code ROOT_NAMES}, and {@code ACTIVE_XML} are
+ * guarded by {@code synchronized(RuntimeBridge.class)}. The {@link #state(ClassLoader)} lookup is a
+ * {@link WeakHashMap} read under the same lock; it is only used on cold paths (classLoaderMatcher,
+ * tests, webserver-start).
  */
 public final class RuntimeBridge {
   private static final RuntimeState DISABLED = RuntimeState.disabled();
-  private static final Map<ClassLoader, RuntimeState> STATES = new WeakHashMap<>();
+  // ponytail: WeakHashMap's key is already weak (auto-clears on ClassLoader GC). The value is a
+  // WeakReference too, so even while the loader lives, an outdated RuntimeState (after reload)
+  // doesn't stay pinned by the bridge — EnrichmentRuntime.STATE is the only strong holder.
+  private static final Map<ClassLoader, WeakReference<RuntimeState>> STATES = new WeakHashMap<>();
+  // ponytail: strong boolean per loader — no Class<?> refs, doesn't defeat WeakHashMap. Needed
+  // because classLoaderMatcher runs before EnrichmentRuntime is injected; the WeakReference in
+  // STATES has no strong backing at that point and can be GC'd before state() reads it.
+  private static final Map<ClassLoader, Boolean> ENABLED = new WeakHashMap<>();
   private static final AtomicReference<Set<String>> ROOT_NAMES = new AtomicReference<>(Set.of());
   private static final AtomicReference<String> ACTIVE_XML = new AtomicReference<>();
   private static final AtomicBoolean WEBSERVER_STARTED = new AtomicBoolean(false);
-  private static volatile ClassLoader memoLoader;
-  private static volatile RuntimeState memoState = DISABLED;
+  private static final WeakReference<RuntimeState> DISABLED_REF = new WeakReference<>(DISABLED);
 
   private RuntimeBridge() {}
 
@@ -90,13 +110,13 @@ public final class RuntimeBridge {
   private static void publishLocked(
       final ClassLoader loader, final CompiledConfiguration configuration) {
     final RuntimeState state = RuntimeState.enabled(configuration, new RuleIndex(configuration));
-    STATES.put(loader, state);
-    memoLoader = loader;
-    memoState = state;
+    STATES.put(loader, new WeakReference<>(state));
+    ENABLED.put(loader, Boolean.TRUE);
     ROOT_NAMES.set(
         configuration.dynamicRules().stream()
             .map(DynamicAttributeRule::rootClassName)
             .collect(Collectors.toUnmodifiableSet()));
+    forwardStateToApplicationClassloader(loader, state);
   }
 
   public static void initialize(final ClassLoader applicationLoader) {
@@ -106,7 +126,8 @@ public final class RuntimeBridge {
     final String encoded = System.getenv("OTEL_CUSTOM_AGENT_CONFIG");
     if (encoded == null) {
       synchronized (RuntimeBridge.class) {
-        STATES.putIfAbsent(applicationLoader, DISABLED);
+        STATES.putIfAbsent(applicationLoader, DISABLED_REF);
+        ENABLED.putIfAbsent(applicationLoader, Boolean.FALSE);
       }
       return;
     }
@@ -119,7 +140,8 @@ public final class RuntimeBridge {
       logConfig(configuration);
     } catch (final ConfigurationException exception) {
       synchronized (RuntimeBridge.class) {
-        STATES.putIfAbsent(applicationLoader, DISABLED);
+        STATES.putIfAbsent(applicationLoader, DISABLED_REF);
+        ENABLED.putIfAbsent(applicationLoader, Boolean.FALSE);
       }
     }
   }
@@ -141,7 +163,9 @@ public final class RuntimeBridge {
           failures.add("reload failed in application classloader");
           continue;
         }
-        publish(loader, configuration, xml);
+        // forwardReloadToApplicationClassloader cascades into EnrichmentRuntime.reloadFromBridge,
+        // which itself calls back RuntimeBridge.publish() — that path stores the WeakReference
+        // and strong-pushes into EnrichmentRuntime.STATE. No strong publish here (would leak).
         updated++;
         staticCount = configuration.staticRules().size();
         dynamicCount = configuration.dynamicRules().size();
@@ -188,6 +212,25 @@ public final class RuntimeBridge {
     }
   }
 
+  // ponytail: strong Push the RuntimeState into the per-loader EnrichmentRuntime.STATE so that
+  // the long-lived extension loader never holds the only strong reference to the Class<?> refs
+  // inside CompiledConfiguration/RuleIndex. Cold path (startup + reload). Fails harmlessly if
+  // EnrichmentRuntime isn't loaded yet — the first enrich() call will adopt via state(loader).
+  private static void forwardStateToApplicationClassloader(
+      final ClassLoader loader, final RuntimeState state) {
+    try {
+      final Class<?> enrichmentRuntime =
+          Class.forName("org.otel.agent.runtime.EnrichmentRuntime", true, loader);
+      enrichmentRuntime.getMethod("setState", RuntimeState.class).invoke(null, state);
+    } catch (final InvocationTargetException setStateFailure) {
+      System.getLogger(RuntimeBridge.class.getName())
+          .log(System.Logger.Level.WARNING, "state strong-push failed", setStateFailure.getCause());
+    } catch (final ReflectiveOperationException notInjected) {
+      // Expected when called from classLoaderMatcher before helper injection. The first
+      // EnrichmentRuntime.enrich() will adopt from the bridge's WeakReference.
+    }
+  }
+
   private static String decodeToXml(final String encoded) {
     try {
       return new String(Base64Util.decode(encoded), StandardCharsets.UTF_8);
@@ -210,12 +253,17 @@ public final class RuntimeBridge {
   }
 
   public static RuntimeState state(final ClassLoader loader) {
-    if (loader != null && loader == memoLoader) return memoState;
     synchronized (RuntimeBridge.class) {
-      final RuntimeState state = STATES.getOrDefault(loader, DISABLED);
-      memoLoader = loader;
-      memoState = state;
-      return state;
+      final WeakReference<RuntimeState> ref = STATES.get(loader);
+      if (ref == null) return DISABLED;
+      final RuntimeState held = ref.get();
+      return held != null ? held : DISABLED;
+    }
+  }
+
+  public static boolean enabled(final ClassLoader loader) {
+    synchronized (RuntimeBridge.class) {
+      return ENABLED.getOrDefault(loader, Boolean.FALSE);
     }
   }
 
@@ -228,9 +276,8 @@ public final class RuntimeBridge {
     WEBSERVER_STARTED.set(false);
     synchronized (RuntimeBridge.class) {
       STATES.clear();
+      ENABLED.clear();
     }
-    memoLoader = null;
-    memoState = DISABLED;
     ROOT_NAMES.set(Set.of());
     ACTIVE_XML.set(null);
   }

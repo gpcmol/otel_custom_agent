@@ -40,7 +40,7 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
       @Override
       public boolean matches(final ClassLoader loader) {
         RuntimeBridge.initialize(loader);
-        return RuntimeBridge.state(loader).enabled();
+        return RuntimeBridge.enabled(loader);
       }
     };
   }
