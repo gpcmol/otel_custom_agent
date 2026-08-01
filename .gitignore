@@ -40,3 +40,4 @@ build/
 gradle/
 **/tls.crt
 **/tls.key
+telemetry.log

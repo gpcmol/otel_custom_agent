@@ -8,14 +8,15 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Main {
 
     private static final int port = 8081;
     private static final ObjectMapper mapper = new ObjectMapper();
-    private static final List<Car> garage = new CopyOnWriteArrayList<>();
+    private static final List<Car> garage = Collections.synchronizedList(new ArrayList<>());
     private static final Garage demoGarage = new Garage(List.of(new Customer("Jan", "Amsterdam")));
 
     public static void main(String[] args) throws IOException {
@@ -34,7 +35,10 @@ public class Main {
             if ("GET".equals(method)) {
                 // GET /cars → lijst van alle cars
                 demoGarage.getCustomers();
-                final String json = mapper.writeValueAsString(garage);
+                final String json;
+                synchronized (garage) {
+                    json = mapper.writeValueAsString(garage);
+                }
                 send(exchange, 200, "application/json", json);
 
             } else if ("POST".equals(method)) {
@@ -45,6 +49,13 @@ public class Main {
                 car.getPassengers();
                 garage.add(car);
                 send(exchange, 201, "application/json", "{\"status\":\"added\"}");
+
+            } else if ("DELETE".equals(method)) {
+                // DELETE /cars → leeg de garage (gebruikt door benchmark tussen fasen)
+                synchronized (garage) {
+                    garage.clear();
+                }
+                sendNoContent(exchange);
 
             } else {
                 send(exchange, 405, "text/plain", "Method not allowed");
@@ -58,6 +69,10 @@ public class Main {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(bytes);
             }
+        }
+
+        private void sendNoContent(final HttpExchange exchange) throws IOException {
+            exchange.sendResponseHeaders(204, -1);
         }
     }
 }

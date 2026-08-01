@@ -81,3 +81,10 @@ $14.39 spent
 
 ## Opzetten Signoz for demo purposes
 https://signoz.io/docs/install/kubernetes/local/
+
+## TODO
+- done benchmarking met org.openjdk.jmh
+- invoke voorkomen en MethodHandle of LambdaMetafactory toepassen
+- expression language op value
+- memory leaks detecteren
+- security op hot reload config

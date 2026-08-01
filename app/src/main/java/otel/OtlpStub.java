@@ -13,18 +13,27 @@ import java.nio.file.StandardOpenOption;
 public class OtlpStub {
 
     public static void main(String[] args) throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress(4317), 0);
+        String host = System.getenv().getOrDefault("OTLP_STUB_HOST", "127.0.0.1");
+        int port = Integer.parseInt(System.getenv().getOrDefault("OTLP_STUB_PORT", "4317"));
+        HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
 
         server.createContext("/", OtlpStub::handle);
 
         server.start();
 
-        System.out.println("Listening on http://localhost:4317");
+        System.out.println("Listening on http://" + host + ":" + port);
     }
 
     private static void handle(HttpExchange exchange) throws IOException {
 
         byte[] body = exchange.getRequestBody().readAllBytes();
+
+        if (body.length == 0) {
+            // Health-check or empty request; no span data to parse.
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+            return;
+        }
 
         ExportTraceServiceRequest exportTraceServiceRequest = ExportTraceServiceRequest.parseFrom(body);
 
