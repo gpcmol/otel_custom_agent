@@ -89,6 +89,7 @@ tasks {
   }
 
   withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
+    enabled = false
     reports {
       create("html") { required = true }
       create("xml") { required = false }

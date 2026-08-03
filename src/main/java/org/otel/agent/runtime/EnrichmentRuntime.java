@@ -16,7 +16,6 @@ import org.otel.agent.config.parser.ConfigurationParser;
 import org.otel.agent.runtime.accessor.AccessorCache;
 import org.otel.agent.runtime.model.ExitPointIndex;
 import org.otel.agent.runtime.resolver.ValueResolver;
-import org.otel.agent.telemetry.AttributeConverter;
 import org.otel.agent.telemetry.AttributeValue;
 import org.otel.agent.telemetry.SpanWriter;
 
@@ -65,7 +64,6 @@ import org.otel.agent.telemetry.SpanWriter;
  */
 public final class EnrichmentRuntime {
   private static final ValueResolver RESOLVER = new ValueResolver(new AccessorCache());
-  private static final AttributeConverter CONVERTER = new AttributeConverter();
   private static final SpanWriter WRITER = new SpanWriter();
   private static final Tracer FALLBACK_TRACER =
       GlobalOpenTelemetry.getTracer("org.otel.custom-agent");
@@ -94,27 +92,28 @@ public final class EnrichmentRuntime {
 
   public static void enrich(final Object receiver, final Object[] arguments, final Object returned, final String methodName) {
     if (receiver == null) return;
+    if (!initialized) {
+      final ClassLoader appLoader = receiver.getClass().getClassLoader();
+      RuntimeBridge.initialize(appLoader);
+      // ponytail: the bridge's strong-push reflection runs from classLoaderMatcher-time where
+      // EnrichmentRuntime isn't loaded yet, so it fails; meanwhile the bridge keeps only a
+      // WeakReference. We are now in-app and can adopt the bridge's held state before GC
+      // reclaims it. Cold path (once per loader); hot path reads STATE directly.
+      final RuntimeState fromBridge = RuntimeBridge.state(appLoader);
+      if (fromBridge.enabled() && fromBridge != STATE) STATE = fromBridge;
+      initialized = true;
+    }
+    final RuntimeState state = STATE;
+    if (!state.enabled()) return;
+    // ponytail: short-circuit before TL ops — most calls are on methods that are not configured
+    // exit points. ExitPointIndex.find is a bounded FIFO cache hit (O(1)) after warmup; non-exit
+    // calls pay zero ThreadLocal overhead.
+    final List<ExitRule> rules = state.exitIndex().find(receiver.getClass(), methodName);
+    if (rules.isEmpty()) return;
     if (ENRICHING.get()) return;
     ENRICHING.set(true);
     try {
-      if (!initialized) {
-        final ClassLoader appLoader = receiver.getClass().getClassLoader();
-        RuntimeBridge.initialize(appLoader);
-        // ponytail: the bridge's strong-push reflection runs from classLoaderMatcher-time where
-        // EnrichmentRuntime isn't loaded yet, so it fails; meanwhile the bridge keeps only a
-        // WeakReference. We are now in-app and can adopt the bridge's held state before GC
-        // reclaims it. Cold path (once per loader); hot path reads STATE directly.
-        final RuntimeState fromBridge = RuntimeBridge.state(appLoader);
-        if (fromBridge.enabled() && fromBridge != STATE) STATE = fromBridge;
-        initialized = true;
-      }
-final RuntimeState state = STATE;
-    if (!state.enabled()) return;
-    // ponytail: short-circuit before fetching the span — most calls are on methods that are not
-    // configured exit points. ExitPointIndex.find is a bounded FIFO cache hit (O(1)) after warmup.
-    final List<ExitRule> rules = state.exitIndex().find(receiver.getClass(), methodName);
-    if (rules.isEmpty()) return;
-    final Span current = Span.current();
+      final Span current = Span.current();
       if (current.getSpanContext().isValid()) {
         write(current, receiver, arguments, returned, rules, state);
         return;
@@ -123,7 +122,7 @@ final RuntimeState state = STATE;
     } catch (final Throwable ignored) {
       // Enrichment must never affect application behavior.
     } finally {
-      ENRICHING.remove();
+      ENRICHING.set(false);
     }
   }
 
@@ -174,7 +173,7 @@ final RuntimeState state = STATE;
         final Object root = rootOf(rule.rootSource(), receiver, arguments, returned);
         if (root == null) continue;
         final Object resolved = RESOLVER.resolve(root, rule.segments());
-        WRITER.write(span, rule.key(), CONVERTER.convert(resolved));
+        WRITER.write(span, rule.key(), resolved);
       } catch (final Throwable ignored) {
         // One broken rule must not block the remaining rules.
       }

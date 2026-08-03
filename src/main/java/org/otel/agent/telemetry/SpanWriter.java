@@ -14,6 +14,27 @@ import java.util.List;
  * silently dropped, matching the OTel attribute contract.
  */
 public final class SpanWriter {
+  private final AttributeConverter converter = new AttributeConverter();
+
+  /**
+   * Writes a resolved value onto a span, dispatching to the fast scalar path first.
+   *
+   * <p>OTel-native scalar types ({@link String}, {@link Long}, {@link Integer}, {@link Boolean},
+   * {@link Double}) bypass {@link AttributeConverter} and {@link AttributeValue} entirely —
+   * one {@code instanceof} cascade then a direct {@link Span#setAttribute} call. All other
+   * values (arrays, iterables, exotic numerics) fall through to {@link #write(Span, String,
+   * AttributeValue)} via {@link AttributeConverter#convert}.
+   */
+  public void write(final Span span, final String key, final Object value) {
+    if (value == null) return;
+    if (value instanceof String s) span.setAttribute(key, s);
+    else if (value instanceof Long l) span.setAttribute(key, l);
+    else if (value instanceof Integer i) span.setAttribute(key, i.longValue());
+    else if (value instanceof Boolean b) span.setAttribute(key, b);
+    else if (value instanceof Double d) span.setAttribute(key, d);
+    else write(span, key, converter.convert(value));
+  }
+
   public void write(final Span span, final String key, final AttributeValue attribute) {
     if (attribute == null || attribute.value() == null) return;
     final Object value = attribute.value();
