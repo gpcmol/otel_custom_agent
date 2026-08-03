@@ -158,6 +158,8 @@ start_stub() {
 # OTEL_CUSTOM_AGENT_CONFIG: set to the Base64 config for "enabled", empty for "disabled".
 # An empty config makes RuntimeBridge publish RuntimeState.disabled() → classLoaderMatcher
 # returns false → no ByteBuddy instrumentation → zero enrichment overhead.
+#   local exp="otlp" always exports to collector
+#   OTEL_EXPORTER_OTLP_ENDPOINT="http://172.19.0.7:4318" is the (non-stub) collector endpoint
 start_app() {
   local mode="$1"; local export_traces="$2"
   local exp="none"

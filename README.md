@@ -108,12 +108,15 @@ GLM 5.2
 $14.39 spent
 ```
 
-## Opzetten Signoz for demo purposes
-https://signoz.io/docs/install/kubernetes/local/
+## Signoz
+Signoz can be installed in kind kubernetes from signoz/./up.sh
+
+## Bechmarking
+Run scripts/./bench.sh to see the diff in % between config disabled and enabled (enabled captures 5 static and 10 dynamic properties)
 
 ## TODO
-- done benchmarking met org.openjdk.jmh
-- invoke voorkomen en MethodHandle of LambdaMetafactory toepassen
+- done - benchmarking using k6
+- done - avoid invoke, use LambdaMetafactory toepassen instead
 - expression language op value
-- memory leaks detecteren
-- security op hot reload config
+- detect memory leaks
+- security on hot reload config endpoint

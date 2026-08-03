@@ -16,4 +16,8 @@ fi
 # create kind cluster
 ./kind-up-with-registry.sh
 
+# metric server
+kubens kube-system
+kubectl apply -f ./metrics-server/components.yaml
+
 echo "Finished Kind"
