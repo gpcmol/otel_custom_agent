@@ -63,6 +63,31 @@ class ExitPointIndexTest {
     assertTrue(first == second, "cache hit MUST return the same immutable instance");
   }
 
+  @Test
+  void defaultCacheCapacityIsAppliedWhenEnvUnset() {
+    final ExitPointIndex index =
+        new ExitPointIndex(configWith(new ExitPoint(Car.class, "com.example.Car", "produce", List.of(rule("brand")))));
+    // ponytail: capacity is package-visible; no env set in test JVM → default applies.
+    assertEquals(ExitPointIndex.DEFAULT_CACHE_CAPACITY, 1000);
+  }
+
+  @Test
+  void resolveCapacityRespectsValidOverride() {
+    assertEquals(500, ExitPointIndex.resolveCapacity("500"));
+    assertEquals(2000, ExitPointIndex.resolveCapacity("  2000  "));
+  }
+
+  @Test
+  void resolveCapacityFallsBackOnInvalidInput() {
+    final int def = ExitPointIndex.DEFAULT_CACHE_CAPACITY;
+    assertEquals(def, ExitPointIndex.resolveCapacity(null));
+    assertEquals(def, ExitPointIndex.resolveCapacity(""));
+    assertEquals(def, ExitPointIndex.resolveCapacity("   "));
+    assertEquals(def, ExitPointIndex.resolveCapacity("abc"));
+    assertEquals(def, ExitPointIndex.resolveCapacity("0"));
+    assertEquals(def, ExitPointIndex.resolveCapacity("-5"));
+  }
+
   private static ExitRule rule(final String key) {
     final List<PathSegment> segments = List.of(new PropertySegment("brand"));
     return new ExitRule(key, new RootSource.This(), segments);

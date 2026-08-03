@@ -238,8 +238,15 @@ property accessors.
   accessors as negative results and treat invocation failures as null.
 - [Classloader references can retain application loaders] -> Keep caches
   bounded to active instrumentation and do not store application objects.
-- [Runtime caches can grow without control] -> Cap each applicable-rule and
-  accessor cache at 1000 entries and evict the oldest entry using FIFO.
+- [Runtime caches can grow without control] -> Cap the applicable-rule cache
+  at 1000 entries and evict the oldest entry using FIFO. The accessor cache is
+  keyed by defining `Class<?>` via `ClassValue`, so its entries are released
+  together with their defining classloader on collection; the bound is
+  instrumented-class lifetime rather than a fixed cap, which removes the
+  per-call `Key` allocation that previously dominated the accessor hot path.
+- [Concurrent accessor discovery may race] -> `ConcurrentHashMap.computeIfAbsent`
+  on the per-class map runs discovery at most once per `(class, property)`,
+  so concurrent lookups never observe a partially resolved accessor.
 - [Iterable indexing may be O(n)] -> Iterate only to the requested position;
   do not copy the collection. This is the specified trade-off for generic
   iterables.

@@ -14,8 +14,10 @@ import org.otel.agent.runtime.cache.FifoCache;
  *
  * <p>Built once per {@link CompiledConfiguration}. The compiled immutable {@link ExitPoint}s
  * are held in a list; the {@code (Class, methodName)} lookup uses a bounded {@link FifoCache}
- * (capacity 1000) so that repeated enrichment for the same {@code (Class, methodName)} pair —
- * the common case — is O(1). On cache miss the index walks all configured {@link ExitPoint}s
+ * (capacity configurable via {@value #CACHE_CAPACITY_ENV}, default {@value
+ * #DEFAULT_CACHE_CAPACITY}) so that repeated enrichment for the same {@code (Class, methodName)}
+ * pair — the common case — is O(1). On cache miss the index walks all configured {@link
+ * ExitPoint}s
  * and selects those whose {@code rootClass.isAssignableFrom(actualClass)} and whose
  * {@code methodName} equals the invoked one; the immutable result (possibly an empty-list
  * sentinel) is cached.
@@ -31,11 +33,32 @@ import org.otel.agent.runtime.cache.FifoCache;
 public final class ExitPointIndex {
   private static final List<ExitRule> EMPTY = List.of();
 
+  /** Default FIFO cache capacity used when {@link #CACHE_CAPACITY_ENV} is unset or invalid. */
+  static final int DEFAULT_CACHE_CAPACITY = 1000;
+
+  /** Environment variable overriding {@link #DEFAULT_CACHE_CAPACITY}; must be a positive int. */
+  static final String CACHE_CAPACITY_ENV = "OTEL_CUSTOM_AGENT_EXIT_INDEX_CACHE_CAPACITY";
+
   private final List<ExitPoint> exitPoints;
-  private final FifoCache<ExitPointKey, List<ExitRule>> cache = new FifoCache<>(1000);
+  private final FifoCache<ExitPointKey, List<ExitRule>> cache;
 
   public ExitPointIndex(final CompiledConfiguration configuration) {
     this.exitPoints = configuration.exitPoints();
+    this.cache = new FifoCache<>(resolveCapacity());
+  }
+
+  private static int resolveCapacity() {
+    return resolveCapacity(System.getenv(CACHE_CAPACITY_ENV));
+  }
+
+  static int resolveCapacity(final String raw) {
+    if (raw == null || raw.isBlank()) return DEFAULT_CACHE_CAPACITY;
+    try {
+      final int parsed = Integer.parseInt(raw.trim());
+      return parsed > 0 ? parsed : DEFAULT_CACHE_CAPACITY;
+    } catch (final NumberFormatException ignored) {
+      return DEFAULT_CACHE_CAPACITY;
+    }
   }
 
   public List<ExitRule> find(final Class<?> runtimeType, final String methodName) {

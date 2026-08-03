@@ -192,9 +192,18 @@ binary names from different classloaders MUST remain isolated. A runtime-class
 cache MAY make the assignable lookup effectively constant-time for warmed
 classes, but it MUST remain bounded and thread-safe.
 
-The applicable-rule and accessor caches MUST each contain at most 1000
-entries. Eviction MUST be FIFO, and eviction MUST NOT change the immutable
-compiled configuration or its startup-built root-class index.
+The applicable-rule cache MUST contain at most 1000 entries and MUST evict
+in FIFO order. Eviction MUST NOT change the immutable compiled configuration or
+its startup-built root-class index.
+
+The accessor cache MUST be keyed by defining `Class<?>` identity (preserving
+classloader isolation) and property name, and MUST be bounded by the lifetime
+of the resolved `Class` (and hence by the defining classloader) rather than by
+a fixed numeric cap: accessor entries for a class are released together with
+that class on loader collection, so the entry set tracks the set of classes
+that are actually loaded and instrumented. The accessor cache MUST NOT use a
+per-call composite key allocation on the hot path; the per-class map lookup
+MUST be zero-allocation on cache hits.
 
 #### Scenario: Subclass matches configured root
 - **WHEN** a rule targets `Car` and the receiver is `SportsCar extends Car`
@@ -519,8 +528,11 @@ Enrichment MUST NOT synchronize on the span, receiver, or a global lock. All
 shared caches MUST be thread-safe; lock-free reads are preferred and only a
 short safe initialization path is permitted outside steady-state reads.
 
-Accessor and applicable-rule caches MUST be bounded to 1000 entries each and
-MUST evict entries in FIFO order.
+The applicable-rule cache MUST be bounded to 1000 entries and MUST evict in
+FIFO order. The accessor cache MUST be keyed by defining `Class<?>` and
+property, race-free under concurrent lookup (discovery runs at most once per
+`(class, property)` pair), zero-allocation on cache hits, and bounded by
+instrumented-class lifetime rather than by a fixed numeric cap.
 
 #### Scenario: Concurrent enrichment is safe
 - **WHEN** multiple threads enrich receivers using shared immutable rules and

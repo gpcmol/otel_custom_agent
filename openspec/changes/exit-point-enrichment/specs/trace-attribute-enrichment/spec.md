@@ -108,7 +108,9 @@ The exit-point index MUST be built once at startup and keyed by `record ExitPoin
 
 The index MUST use class identity rather than only a binary class-name string. This requirement intentionally supersedes a name-only lookup because equal binary names from different classloaders MUST remain isolated. A runtime-class cache MAY make the assignable lookup effectively constant-time for warmed classes, but it MUST remain bounded and thread-safe.
 
-The exit-point index and accessor caches MUST each contain at most 1000 entries. Eviction MUST be FIFO, and eviction MUST NOT change the immutable compiled configuration or its startup-built exit-point index.
+The exit-point index cache MUST contain at most 1000 entries and MUST evict in FIFO order; eviction MUST NOT change the immutable compiled configuration or its startup-built exit-point index.
+
+The accessor cache MUST be keyed by defining `Class<?>` identity (preserving classloader isolation) and property name, race-free under concurrent lookup (discovery runs at most once per `(class, property)` pair), zero-allocation on cache hits, and bounded by instrumented-class lifetime (released with its defining classloader on collection) rather than by a fixed numeric cap.
 
 #### Scenario: Subclass matches configured exit point
 - **WHEN** `<enrich class="com.example.Car" method="produce">` is configured and the receiver is `SportsCar extends Car` overriding `produce`
