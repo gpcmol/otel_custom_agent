@@ -18,6 +18,9 @@ import org.otel.agent.config.model.PathSegment;
 import org.otel.agent.config.model.PropertySegment;
 import org.otel.agent.config.model.RootSource;
 import org.otel.agent.config.model.StaticAttributeRule;
+import org.otel.agent.expr.Condition;
+import org.otel.agent.expr.ExpressionCompileException;
+import org.otel.agent.expr.parser.ExpressionParser;
 import org.otel.agent.utils.Base64Util;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -131,7 +134,7 @@ public final class ConfigurationParser {
     final Set<String> seenExitPoints = new HashSet<>();
     final List<ExitPoint> exitPoints = new ArrayList<>();
     for (final Element enrichElement : children(section, "enrich")) {
-      validateAttributes(enrichElement, Set.of("class", "method"));
+      validateAttributes(enrichElement, Set.of("class", "method", "expr"));
       final String className = required(enrichElement, "class");
       final String methodName = required(enrichElement, "method");
       validateIdentifier(methodName);
@@ -145,7 +148,7 @@ public final class ConfigurationParser {
       } catch (final ClassNotFoundException e) {
         throw new ConfigurationException("exit-point class cannot be resolved: " + className);
       }
-      verifyMethodExists(rootClass, methodName, className);
+      final Method exitMethod = verifyMethodExists(rootClass, methodName, className);
       validateChildren(enrichElement, "attribute");
       final List<ExitRule> rules = new ArrayList<>();
       for (final Element attribute : children(enrichElement, "attribute")) {
@@ -155,19 +158,34 @@ public final class ConfigurationParser {
         validateKey(key, keys);
         rules.add(parseExitRule(key, path));
       }
-      exitPoints.add(new ExitPoint(rootClass, className, methodName, rules));
+      final String expr = enrichElement.getAttribute("expr");
+      final Condition condition = compileExpr(expr, exitKey, rootClass, exitMethod);
+      exitPoints.add(new ExitPoint(rootClass, className, methodName, rules, condition));
     }
     return exitPoints;
   }
 
-  private void verifyMethodExists(
+  private Method verifyMethodExists(
       final Class<?> type, final String methodName, final String className)
       throws ConfigurationException {
     for (final Method method : type.getMethods()) {
-      if (method.getName().equals(methodName)) return;
+      if (method.getName().equals(methodName)) return method;
     }
     throw new ConfigurationException(
         "exit-point method not found: " + className + "#" + methodName);
+  }
+
+  private Condition compileExpr(final String expr, final String blockId,
+      final Class<?> rootClass, final Method exitMethod) {
+    if (expr == null || expr.isBlank()) return null;
+    try {
+      return new ExpressionParser().parse(expr, blockId, rootClass, exitMethod);
+    } catch (final ExpressionCompileException e) {
+      System.getLogger(ConfigurationParser.class.getName())
+          .log(System.Logger.Level.WARNING,
+              "expression disabled for " + e.blockId() + ": " + e.category());
+      return null;
+    }
   }
 
   private ExitRule parseExitRule(final String key, final String path)

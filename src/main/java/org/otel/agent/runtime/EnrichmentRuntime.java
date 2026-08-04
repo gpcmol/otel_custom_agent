@@ -8,11 +8,14 @@ import java.util.List;
 import org.otel.agent.bridge.RuntimeBridge;
 import org.otel.agent.bridge.RuntimeState;
 import org.otel.agent.config.model.CompiledConfiguration;
+import org.otel.agent.config.model.ExitPoint;
 import org.otel.agent.config.model.ExitRule;
 import org.otel.agent.config.model.RootSource;
 import org.otel.agent.config.model.StaticAttributeRule;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
+import org.otel.agent.expr.Condition;
+import org.otel.agent.expr.EvalContext;
 import org.otel.agent.runtime.accessor.AccessorCache;
 import org.otel.agent.runtime.model.ExitPointIndex;
 import org.otel.agent.runtime.resolver.ValueResolver;
@@ -95,21 +98,17 @@ public final class EnrichmentRuntime {
     if (!initialized) {
       final ClassLoader appLoader = receiver.getClass().getClassLoader();
       RuntimeBridge.initialize(appLoader);
-      // ponytail: the bridge's strong-push reflection runs from classLoaderMatcher-time where
-      // EnrichmentRuntime isn't loaded yet, so it fails; meanwhile the bridge keeps only a
-      // WeakReference. We are now in-app and can adopt the bridge's held state before GC
-      // reclaims it. Cold path (once per loader); hot path reads STATE directly.
       final RuntimeState fromBridge = RuntimeBridge.state(appLoader);
       if (fromBridge.enabled() && fromBridge != STATE) STATE = fromBridge;
       initialized = true;
     }
     final RuntimeState state = STATE;
     if (!state.enabled()) return;
-    // ponytail: short-circuit before TL ops — most calls are on methods that are not configured
-    // exit points. ExitPointIndex.find is a bounded FIFO cache hit (O(1)) after warmup; non-exit
-    // calls pay zero ThreadLocal overhead.
     final List<ExitRule> rules = state.exitIndex().find(receiver.getClass(), methodName);
     if (rules.isEmpty()) return;
+    final ExitPoint exitPoint =
+        state.exitIndex().findExitPoint(receiver.getClass(), methodName);
+    if (!gate(exitPoint, receiver, arguments, returned)) return;
     if (ENRICHING.get()) return;
     ENRICHING.set(true);
     try {
@@ -133,6 +132,39 @@ public final class EnrichmentRuntime {
     final ExitPointIndex exitIndex = new ExitPointIndex(configuration);
     setState(RuntimeState.enabled(configuration, exitIndex));
     RuntimeBridge.publish(applicationLoader, configuration, xml);
+  }
+
+  /**
+   * The single runtime evaluation point for the condition DSL.
+   *
+   * <p>Returns {@code true} when the block should enrich (condition is {@code null} — absent or
+   * silently disabled — or evaluates to {@code true}); returns {@code false} when the block must
+   * be skipped (condition evaluates to {@code false} or throws). This is the ONLY place the DSL
+   * is evaluated at runtime — the parser runs only at startup/reload.
+   *
+   * <p>The {@link EvalContext} is stack-allocated here and passed by reference through the AST
+   * walk — no per-node allocation.
+   *
+   * @param exitPoint the matched exit point, or {@code null} if no exit point was found
+   * @param receiver the advice receiver ({@code @Advice.This})
+   * @param arguments the advice arguments ({@code @Advice.AllArguments})
+   * @param returned the advice return value ({@code @Advice.Return}, or {@code null} for void)
+   * @return {@code true} if the block should enrich; {@code false} to skip
+   */
+  static boolean gate(
+      final ExitPoint exitPoint,
+      final Object receiver,
+      final Object[] arguments,
+      final Object returned) {
+    if (exitPoint == null) return true;
+    final Condition condition = exitPoint.condition();
+    if (condition == null) return true;
+    final EvalContext ctx = new EvalContext(receiver, arguments, returned, RESOLVER);
+    try {
+      return condition.eval(ctx);
+    } catch (final Throwable ignored) {
+      return false;
+    }
   }
 
   private static void createFallback(final Object receiver, final Object[] arguments, final Object returned, final List<ExitRule> rules, final RuntimeState state) {

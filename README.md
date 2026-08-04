@@ -34,7 +34,8 @@ each path uses the existing property/index grammar (e.g. `passengers[1].name`).
         <attribute key="service" value="garage"/>
     </static>
     <dynamic>
-        <enrich class="com.example.Garage" method="park">
+        <enrich class="com.example.Garage" method="park"
+                expr="$arg0.brand == 'BMW' && ilike($arg0.model, 'x%')">
             <attribute key="brand" path="$arg0.brand"/>
             <attribute key="model" path="$arg0.model"/>
             <attribute key="year" path="$arg0.year"/>
@@ -50,8 +51,125 @@ each path uses the existing property/index grammar (e.g. `passengers[1].name`).
 </configuration>
 ```
 
-Reads as: *"when `com.example.Garage.park` exits, read these properties from its first parameter
-and write them on the current span."* One enrich event per span-producing method exit.
+Reads as: *"when `com.example.Garage.park` exits, if the first argument's `brand` equals `BMW`
+and `model` matches `x%` (case-insensitive), read these properties and write them on the current
+span."* One enrich event per span-producing method exit. The `expr` gate is optional — omit it
+for unconditional enrichment.
+
+### Conditional enrichment with `expr`
+
+An `<enrich>` block MAY carry an optional `expr` attribute that gates the whole block. When the
+expression evaluates to `false` at method exit, the block's static and dynamic attributes are
+skipped. When `expr` is absent, the block enriches unconditionally.
+
+The expression is parsed and type-checked once at startup against the declared exit-point class
+and method signature. On the hot path it is evaluated as a compiled AST — no runtime string
+parsing, no reflection, no type guessing.
+
+### DSL reference
+
+#### Path roots
+
+| Root | Resolves to | Example |
+|------|-------------|---------|
+| `$this` | The receiver of the exit-point method | `$this.brand` |
+| `$arg0` | The first method parameter (0-indexed, 0..127) | `$arg0.brand` |
+| `$return` | The method return value (`null` on `void` methods) | `$return.status` |
+
+Path segments follow the existing grammar: dot-separated property names with optional `[index]`
+for arrays and lists. Example: `$arg0.passengers[1].name`.
+
+#### Atoms
+
+| Atom | Description | Example |
+|------|-------------|---------|
+| `$root.prop` | Property access from a path root | `$arg0.brand` |
+| `'string'` or `"string"` | String literal | `'BMW'` |
+| `42`, `3.14` | Numeric literal (long or double) | `42`, `3.14` |
+| `true`, `false` | Boolean literal | `true` |
+| `null` | Null literal (for null-checks) | `null` |
+| `[a, b, c]` | Collection literal (for `in` operator) | `[0, 100000]` |
+
+#### Operators (lowest to highest precedence)
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `||` | Boolean OR (short-circuits) | `$x == 'a' \|\| $x == 'b'` |
+| `&&` | Boolean AND (short-circuits) | `$x == 'a' && $y == 'b'` |
+| `!` | Boolean NOT | `!$arg0.electric` |
+| `==`, `!=` | Equality / inequality (any type) | `$arg0.brand == 'BMW'` |
+| `<`, `>`, `<=`, `>=` | Numeric comparison | `$arg0.mileage > 50000` |
+| `in` | Collection membership | `$arg0.mileage in [0, 100000]` |
+| `+`, `-`, `*`, `/`, `%` | Arithmetic | `size($arg0.orders) + 1` |
+| `( )` | Parenthesised grouping | `($x \|\| $y) && $z` |
+
+Full nesting is supported: `A && (B || C) && !D`.
+
+#### Functions
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `size(coll)` | Collection/array size (`0` for `null`) | `size($arg0.orders) > 5` |
+| `contains(hay, needle)` | `String.contains` (substring) or `Collection.contains` (element) | `contains($arg0.tags, 'vip')` |
+| `like(str, pattern)` | SQL `LIKE` — `%` = any sequence, `_` = one char (case-sensitive) | `like($arg0.brand, 'BM%')` |
+| `ilike(str, pattern)` | SQL `ILIKE` — case-insensitive `like` | `ilike($arg0.model, 'x%')` |
+| `icontains(hay, needle)` | Case-insensitive `equals` (String) or element-wise `equalsIgnoreCase` (Collection<String>) | `icontains($arg0.country, 'NL')` |
+
+> **`icontains` does NOT do substring matching.** It compares whole strings (or whole
+> collection elements) case-insensitively. For case-insensitive substring matching, use
+> `ilike(hay, "%needle%")`.
+
+> **`ilike` uses ASCII case-fold.** German ß and Turkish I are not correctly handled — V1
+> targets ASCII identifiers (tenant codes, brand codes, region tags).
+
+### Examples
+
+```
+# Only enrich BMWs
+$arg0.brand == 'BMW'
+
+# BMW X-series only (case-insensitive model prefix)
+$arg0.brand == 'BMW' && ilike($arg0.model, 'x%')
+
+# Premium customers: large order OR VIP tag
+size($arg0.orders) > 5 || contains($arg0.tags, 'vip')
+
+# Gate on nested property with null-safety (built into all path access)
+$arg0.customer?.country == 'NL'
+
+# Mileage in a range
+$arg0.mileage in [0, 100000]
+
+# Negation with grouping
+!($arg0.brand == 'audi') && $arg0.electric
+
+# Multiple conditions with parentheses
+($arg0.brand == 'BMW' || $arg0.brand == 'VW')
+  && $arg0.mileage > 10000
+  && ilike($arg0.fuelType, 'electric%')
+```
+
+### Failure handling
+
+If the expression cannot be parsed or type-checked at startup, it is **silently disabled** for
+that block — the block enriches unconditionally (as if `expr` were absent) — and the agent emits
+exactly **one warning at startup** naming the block (`class#method`) and the failure category.
+
+| Failure category | Cause |
+|------------------|-------|
+| `syntax error` | Malformed expression (unclosed parenthesis, trailing operator, unknown token) |
+| `type mismatch` | Operand types don't match (e.g. `String == Long`) |
+| `unknown function` | Function name not in the fixed vocabulary |
+| `unknown property` | Property not found on the declared class via getter/field |
+| `erased collection type` | Raw `Collection` without generic type parameter |
+| `map unsupported` | Path navigates into a `Map` |
+| `wrong arity` | Function called with the wrong number of arguments |
+
+> **XML escaping:** `&&` must be written as `&amp;&amp;` inside the `expr` attribute because `&`
+> is a reserved character in XML attributes. The agent decodes `&amp;` to `&` before parsing the
+> expression.
+
+See `openspec/changes/add-condition-dsl/design.md` for the full design decisions.
 
 ### Migrating from the previous flat form
 
@@ -117,6 +235,6 @@ Run scripts/./bench.sh to see the diff in % between config disabled and enabled 
 ## TODO
 - done - benchmarking using k6
 - done - avoid invoke, use LambdaMetafactory toepassen instead
-- expression language op value
+- done - expression language (expression dsl)
 - detect memory leaks
-- security on hot reload config endpoint
+- security on hot reload config endpoint (stomp using topics)

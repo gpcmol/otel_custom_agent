@@ -76,4 +76,20 @@ public final class ExitPointIndex {
     cache.put(key, immutable);
     return immutable;
   }
+
+  /**
+   * Returns the {@link ExitPoint} matching the given runtime type and method name, or
+   * {@code null} if no configured exit point matches. Used by {@link
+   * org.otel.agent.runtime.EnrichmentRuntime} to read the optional {@code Condition} for the
+   * gate.
+   */
+  public ExitPoint findExitPoint(final Class<?> runtimeType, final String methodName) {
+    for (final ExitPoint exitPoint : exitPoints) {
+      if (exitPoint.methodName().equals(methodName)
+          && exitPoint.rootClass().isAssignableFrom(runtimeType)) {
+        return exitPoint;
+      }
+    }
+    return null;
+  }
 }
