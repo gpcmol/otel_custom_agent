@@ -3,8 +3,9 @@ POST http://localhost:8081/cars
 Content-Type: application/json
 
 {
-  "brand": "BMW",
+  "brand": "bmw",
   "model": "x5",
+  "mileage": 10000,
   "passengers": [
     { "name": "Jan" },
     { "name": "Piet" },
