@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
+import org.otel.agent.config.model.PathSegment;
+import org.otel.agent.config.model.PropertySegment;
 import org.otel.agent.expr.And;
 import org.otel.agent.expr.BoolCall;
 import org.otel.agent.expr.Compare;
@@ -59,30 +61,51 @@ class ExpressionParserShapeTest {
 
   @Test
   void greaterThanProducesCompare() throws ExpressionCompileException {
-    final Condition c = parse("$this.mileage > 1000");
+    final Condition c = parse("$this.mileage gt 1000");
     assertInstanceOf(Compare.class, c);
     assertEquals(Compare.Op.GT, ((Compare) c).op());
+  }
+
+  @Test
+  void wordComparisonOperatorsMapToCompareOps() throws ExpressionCompileException {
+    assertEquals(Compare.Op.LT, ((Compare) parse("$this.mileage lt 1000")).op());
+    assertEquals(Compare.Op.LE, ((Compare) parse("$this.mileage lte 1000")).op());
+    assertEquals(Compare.Op.GT, ((Compare) parse("$this.mileage gt 1000")).op());
+    assertEquals(Compare.Op.GE, ((Compare) parse("$this.mileage gte 1000")).op());
   }
 
   // --- Boolean operators ---
 
   @Test
   void andProducesAndNode() throws ExpressionCompileException {
-    final Condition c = parse("$this.brand == 'a' && $this.brand == 'b'");
+    final Condition c = parse("$this.brand == 'a' and $this.brand == 'b'");
     assertInstanceOf(And.class, c);
     assertEquals(2, ((And) c).terms().size());
   }
 
   @Test
   void orProducesOrNode() throws ExpressionCompileException {
-    final Condition c = parse("$this.brand == 'a' || $this.brand == 'b'");
+    final Condition c = parse("$this.brand == 'a' or $this.brand == 'b'");
     assertInstanceOf(Or.class, c);
     assertEquals(2, ((Or) c).terms().size());
   }
 
   @Test
   void notProducesNotNode() throws ExpressionCompileException {
-    final Condition c = parse("!($this.brand == 'a')");
+    final Condition c = parse("not ($this.brand == 'a')");
+    assertInstanceOf(Not.class, c);
+  }
+
+  @Test
+  void notFollowedByFunctionCall() throws ExpressionCompileException {
+    final Condition c = parse("not ilike($this.brand, 'a%')");
+    assertInstanceOf(Not.class, c);
+    assertInstanceOf(BoolCall.class, ((Not) c).term());
+  }
+
+  @Test
+  void notFollowedByBareBoolean() throws ExpressionCompileException {
+    final Condition c = parse("not $this.electric");
     assertInstanceOf(Not.class, c);
   }
 
@@ -90,8 +113,8 @@ class ExpressionParserShapeTest {
 
   @Test
   void andHasHigherPrecedenceThanOr() throws ExpressionCompileException {
-    // a || b && c parses as a || (b && c)
-    final Condition c = parse("$this.brand == 'a' || $this.brand == 'b' && $this.brand == 'c'");
+    // a or b and c parses as a or (b and c)
+    final Condition c = parse("$this.brand == 'a' or $this.brand == 'b' and $this.brand == 'c'");
     assertInstanceOf(Or.class, c);
     final Or or = (Or) c;
     assertEquals(2, or.terms().size());
@@ -100,9 +123,19 @@ class ExpressionParserShapeTest {
   }
 
   @Test
+  void notBindsTighterThanAnd() throws ExpressionCompileException {
+    // not ilike(...) and X parses as (not ilike(...)) and X
+    final Condition c = parse("not ilike($this.brand, 'a%') and $this.brand == 'b'");
+    assertInstanceOf(And.class, c);
+    final And and = (And) c;
+    assertInstanceOf(Not.class, and.terms().get(0));
+    assertInstanceOf(Compare.class, and.terms().get(1));
+  }
+
+  @Test
   void parenthesesOverridePrecedence() throws ExpressionCompileException {
-    // (a || b) && c parses as (a || b) && c
-    final Condition c = parse("($this.brand == 'a' || $this.brand == 'b') && $this.brand == 'c'");
+    // (a or b) and c parses as (a or b) and c
+    final Condition c = parse("($this.brand == 'a' or $this.brand == 'b') and $this.brand == 'c'");
     assertInstanceOf(And.class, c);
     final And and = (And) c;
     assertEquals(2, and.terms().size());
@@ -112,9 +145,9 @@ class ExpressionParserShapeTest {
 
   @Test
   void arbitraryNesting() throws ExpressionCompileException {
-    // A && (B || C) && !D
+    // A and (B or C) and not D
     final Condition c = parse(
-        "$this.brand == 'a' && ($this.brand == 'b' || $this.brand == 'c') && !($this.brand == 'd')");
+        "$this.brand == 'a' and ($this.brand == 'b' or $this.brand == 'c') and not ($this.brand == 'd')");
     assertInstanceOf(And.class, c);
     final And and = (And) c;
     assertEquals(3, and.terms().size());
@@ -138,7 +171,7 @@ class ExpressionParserShapeTest {
 
   @Test
   void sizeProducesSizeCall() throws ExpressionCompileException {
-    final Condition c = parse("size($this.orders) > 5");
+    final Condition c = parse("size($this.orders) gt 5");
     assertInstanceOf(Compare.class, c);
     final Compare cmp = (Compare) c;
     assertInstanceOf(SizeCall.class, cmp.left());
@@ -200,6 +233,25 @@ class ExpressionParserShapeTest {
     assertInstanceOf(Property.class, cmp.left());
   }
 
+  @Test
+  void keywordNamedPropertyStillParses() throws ExpressionCompileException {
+    // `not` after a dot is a property segment, never the keyword.
+    final Condition c = parseWithArgs("$arg0.not == 'yes'");
+    assertInstanceOf(Compare.class, c);
+    final Compare cmp = (Compare) c;
+    final Property left = (Property) cmp.left();
+    assertEquals(1, left.segments().size());
+    final PathSegment seg = left.segments().getFirst();
+    assertInstanceOf(PropertySegment.class, seg);
+    assertEquals("not", ((PropertySegment) seg).propertyName());
+  }
+
+  @Test
+  void andNamedPropertyStillParses() throws ExpressionCompileException {
+    final Condition c = parseWithArgs("$arg0.and == 'yes'");
+    assertInstanceOf(Compare.class, c);
+  }
+
   private Condition parseWithArgs(final String expr) throws ExpressionCompileException {
     try {
       final Method m = ArgFixture.class.getMethod("park", Car.class);
@@ -241,6 +293,63 @@ class ExpressionParserShapeTest {
     assertThrows(ExpressionCompileException.class, () -> parse("($this.brand == 'BMW'"));
   }
 
+  // --- Removed symbolic forms are parse errors ---
+
+  @Test
+  void symbolicAndIsParseError() {
+    assertThrows(ExpressionCompileException.class,
+        () -> parse("$this.brand == 'a' && $this.brand == 'b'"));
+  }
+
+  @Test
+  void symbolicOrIsParseError() {
+    assertThrows(ExpressionCompileException.class,
+        () -> parse("$this.brand == 'a' || $this.brand == 'b'"));
+  }
+
+  @Test
+  void symbolicNotIsParseError() {
+    assertThrows(ExpressionCompileException.class, () -> parse("!$this.electric"));
+  }
+
+  @Test
+  void symbolicLtIsParseError() {
+    assertThrows(ExpressionCompileException.class, () -> parse("$this.mileage < 1000"));
+  }
+
+  @Test
+  void symbolicGtIsParseError() {
+    assertThrows(ExpressionCompileException.class, () -> parse("$this.mileage > 1000"));
+  }
+
+  @Test
+  void symbolicLeIsParseError() {
+    assertThrows(ExpressionCompileException.class, () -> parse("$this.mileage <= 1000"));
+  }
+
+  @Test
+  void symbolicGeIsParseError() {
+    assertThrows(ExpressionCompileException.class, () -> parse("$this.mileage >= 1000"));
+  }
+
+  // --- not is a keyword, not a function ---
+
+  @Test
+  void notFunctionCallFormRejected() {
+    assertThrows(ExpressionCompileException.class, () -> parse("not($this.brand, 'x%')"));
+  }
+
+  @Test
+  void notFunctionCallFormRejectedWithSingleArgument() {
+    assertThrows(ExpressionCompileException.class, () -> parse("not($this.electric)"));
+  }
+
+  @Test
+  void notSpaceParenthesisIsValid() throws ExpressionCompileException {
+    final Condition c = parse("not ($this.brand == 'a')");
+    assertInstanceOf(Not.class, c);
+  }
+
   // --- Test fixtures ---
 
   public static final class Fixture {
@@ -275,6 +384,8 @@ class ExpressionParserShapeTest {
 
   public static final class Car {
     public String brand = "BMW";
+    public String not = "yes";
+    public String and = "yes";
 
     public String getBrand() {
       return brand;

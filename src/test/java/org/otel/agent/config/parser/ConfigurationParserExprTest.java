@@ -72,6 +72,27 @@ class ConfigurationParserExprTest {
   }
 
   @Test
+  void wordOperatorsInExprWithoutEscapingProduceNonNullCondition() throws Exception {
+    // and/gt/not are word operators: the expr fits verbatim in the XML attribute, no
+    // entity escaping (no &amp;&amp;, no &lt;).
+    final String xml =
+        """
+        <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        <configuration>
+            <dynamic>
+                <enrich class="org.otel.agent.config.parser.ConfigurationParserExprTest$Fixture"
+                        method="process"
+                        expr="$this.brand == 'BMW' and $this.mileage gt 0 and not ($this.brand == 'Audi')">
+                    <attribute key="brand" path="$this.brand"/>
+                </enrich>
+            </dynamic>
+        </configuration>
+        """;
+    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    assertNotNull(config.exitPoints().getFirst().condition());
+  }
+
+  @Test
   void absentExprProducesNullCondition() throws Exception {
     final String xml =
         """
@@ -112,9 +133,14 @@ class ConfigurationParserExprTest {
 
   public static final class Fixture {
     public String brand = "BMW";
+    public long mileage = 12_000L;
 
     public String getBrand() {
       return brand;
+    }
+
+    public long getMileage() {
+      return mileage;
     }
 
     public void process() {}

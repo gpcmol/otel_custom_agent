@@ -35,7 +35,7 @@ each path uses the existing property/index grammar (e.g. `passengers[1].name`).
     </static>
     <dynamic>
         <enrich class="com.example.Garage" method="park"
-                expr="$arg0.brand == 'BMW' && ilike($arg0.model, 'x%')">
+                expr="$arg0.brand == 'BMW' and ilike($arg0.model, 'x%')">
             <attribute key="brand" path="$arg0.brand"/>
             <attribute key="model" path="$arg0.model"/>
             <attribute key="year" path="$arg0.year"/>
@@ -94,22 +94,28 @@ for arrays and lists. Example: `$arg0.passengers[1].name`.
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `||` | Boolean OR (short-circuits) | `$x == 'a' \|\| $x == 'b'` |
-| `&&` | Boolean AND (short-circuits) | `$x == 'a' && $y == 'b'` |
-| `!` | Boolean NOT | `!$arg0.electric` |
+| `or` | Boolean OR (short-circuits) | `$x == 'a' or $x == 'b'` |
+| `and` | Boolean AND (short-circuits) | `$x == 'a' and $y == 'b'` |
+| `not` | Boolean NOT (prefix) | `not $arg0.electric` |
 | `==`, `!=` | Equality / inequality (any type) | `$arg0.brand == 'BMW'` |
-| `<`, `>`, `<=`, `>=` | Numeric comparison | `$arg0.mileage > 50000` |
+| `lt`, `gt`, `lte`, `gte` | Numeric comparison | `$arg0.mileage gt 50000` |
 | `in` | Collection membership | `$arg0.mileage in [0, 100000]` |
 | `+`, `-`, `*`, `/`, `%` | Arithmetic | `size($arg0.orders) + 1` |
-| `( )` | Parenthesised grouping | `($x \|\| $y) && $z` |
+| `( )` | Parenthesised grouping | `($x or $y) and $z` |
 
-Full nesting is supported: `A && (B || C) && !D`.
+Full nesting is supported: `A and (B or C) and not D`.
+
+> **XML-friendly.** Every operator is a word (`and`, `or`, `not`, `lt`, `lte`, `gt`,
+> `gte`) or already XML-safe (`==`, `!=`, `in`), so an `expr` attribute fits in a config
+> file **without any entity escaping**. The old symbolic forms (`&&`, `||`, `!`, `<`, `>`,
+> `<=`, `>=`) are not accepted and fall into the per-block fail-safe (silently disabled
+> + one startup warning).
 
 #### Functions
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `size(coll)` | Collection/array size (`0` for `null`) | `size($arg0.orders) > 5` |
+| `size(coll)` | Collection/array size (`0` for `null`) | `size($arg0.orders) gt 5` |
 | `contains(hay, needle)` | `String.contains` (substring) or `Collection.contains` (element) | `contains($arg0.tags, 'vip')` |
 | `like(str, pattern)` | SQL `LIKE` — `%` = any sequence, `_` = one char (case-sensitive) | `like($arg0.brand, 'BM%')` |
 | `ilike(str, pattern)` | SQL `ILIKE` — case-insensitive `like` | `ilike($arg0.model, 'x%')` |
@@ -129,10 +135,10 @@ Full nesting is supported: `A && (B || C) && !D`.
 $arg0.brand == 'BMW'
 
 # BMW X-series only (case-insensitive model prefix)
-$arg0.brand == 'BMW' && ilike($arg0.model, 'x%')
+$arg0.brand == 'BMW' and ilike($arg0.model, 'x%')
 
 # Premium customers: large order OR VIP tag
-size($arg0.orders) > 5 || contains($arg0.tags, 'vip')
+size($arg0.orders) gt 5 or contains($arg0.tags, 'vip')
 
 # Gate on nested property with null-safety (built into all path access)
 $arg0.customer?.country == 'NL'
@@ -141,12 +147,12 @@ $arg0.customer?.country == 'NL'
 $arg0.mileage in [0, 100000]
 
 # Negation with grouping
-!($arg0.brand == 'audi') && $arg0.electric
+not ($arg0.brand == 'audi') and $arg0.electric
 
 # Multiple conditions with parentheses
-($arg0.brand == 'BMW' || $arg0.brand == 'VW')
-  && $arg0.mileage > 10000
-  && ilike($arg0.fuelType, 'electric%')
+($arg0.brand == 'BMW' or $arg0.brand == 'VW')
+  and $arg0.mileage gt 10000
+  and ilike($arg0.fuelType, 'electric%')
 ```
 
 ### Failure handling
@@ -165,9 +171,10 @@ exactly **one warning at startup** naming the block (`class#method`) and the fai
 | `map unsupported` | Path navigates into a `Map` |
 | `wrong arity` | Function called with the wrong number of arguments |
 
-> **XML escaping:** `&&` must be written as `&amp;&amp;` inside the `expr` attribute because `&`
-> is a reserved character in XML attributes. The agent decodes `&amp;` to `&` before parsing the
-> expression.
+> **XML-safe:** all operators are words (`and`, `or`, `not`, `lt`, `lte`, `gt`, `gte`) or
+> XML-safe symbols (`==`, `!=`), so the `expr` attribute needs **no entity escaping** — write
+> the expression verbatim. The old symbolic forms (`&&`, `||`, `!`, `<`, `>`, `<=`, `>=`) are
+> removed; using one fails to parse and falls into the fail-safe above (`syntax error`).
 
 See `openspec/changes/add-condition-dsl/design.md` for the full design decisions.
 
@@ -238,3 +245,4 @@ Run scripts/./bench.sh to see the diff in % between config disabled and enabled 
 - done - expression language (expression dsl)
 - detect memory leaks
 - security on hot reload config endpoint (stomp using topics)
+- TTL on configuration. automatically expire the active configuration

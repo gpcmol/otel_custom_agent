@@ -126,18 +126,23 @@ class LexerTest {
   // --- Operators ---
 
   @Test
-  void orOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.OR, "||", 0), first("||"));
+  void andOrNotLexAsIdentifiers() throws ExpressionCompileException {
+    // Word operators are contextual keywords: they lex as plain IDENTIFIER tokens.
+    assertEquals(tok(Token.Type.IDENTIFIER, "and", 0), first("and"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "or", 0), first("or"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "not", 0), first("not"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "lt", 0), first("lt"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "lte", 0), first("lte"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "gt", 0), first("gt"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "gte", 0), first("gte"));
   }
 
   @Test
-  void andOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.AND, "&&", 0), first("&&"));
-  }
-
-  @Test
-  void notOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.NOT, "!", 0), first("!"));
+  void keywordPrefixDoesNotMakeKeyword() throws ExpressionCompileException {
+    // Greedy identifier scan: notable is a single IDENT, not the `not` keyword.
+    assertEquals(tok(Token.Type.IDENTIFIER, "notable", 0), first("notable"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "android", 0), first("android"));
+    assertEquals(tok(Token.Type.IDENTIFIER, "other", 0), first("other"));
   }
 
   @Test
@@ -148,26 +153,6 @@ class LexerTest {
   @Test
   void neOperator() throws ExpressionCompileException {
     assertEquals(tok(Token.Type.NE, "!=", 0), first("!="));
-  }
-
-  @Test
-  void ltOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.LT, "<", 0), first("<"));
-  }
-
-  @Test
-  void gtOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.GT, ">", 0), first(">"));
-  }
-
-  @Test
-  void leOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.LE, "<=", 0), first("<="));
-  }
-
-  @Test
-  void geOperator() throws ExpressionCompileException {
-    assertEquals(tok(Token.Type.GE, ">=", 0), first(">="));
   }
 
   @Test
@@ -248,14 +233,14 @@ class LexerTest {
 
   @Test
   void andOrExpression() throws ExpressionCompileException {
-    final List<Token> tokens = tokenize("(a || b) && c");
+    final List<Token> tokens = tokenize("(a or b) and c");
     assertEquals(8, tokens.size());
     assertEquals(Token.Type.LPAREN, tokens.get(0).type());
     assertEquals(Token.Type.IDENTIFIER, tokens.get(1).type());
-    assertEquals(Token.Type.OR, tokens.get(2).type());
+    assertEquals(Token.Type.IDENTIFIER, tokens.get(2).type());
     assertEquals(Token.Type.IDENTIFIER, tokens.get(3).type());
     assertEquals(Token.Type.RPAREN, tokens.get(4).type());
-    assertEquals(Token.Type.AND, tokens.get(5).type());
+    assertEquals(Token.Type.IDENTIFIER, tokens.get(5).type());
     assertEquals(Token.Type.IDENTIFIER, tokens.get(6).type());
   }
 
@@ -278,6 +263,43 @@ class LexerTest {
   @Test
   void unknownPunctuationTilde() {
     assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("~"));
+  }
+
+  // --- Removed symbolic operators are rejected at the lexer ---
+
+  @Test
+  void symbolicDoubleAmpersandRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("&&"));
+  }
+
+  @Test
+  void symbolicDoublePipeRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("||"));
+  }
+
+  @Test
+  void symbolicSingleBangRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("!"));
+  }
+
+  @Test
+  void symbolicLtRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("<"));
+  }
+
+  @Test
+  void symbolicGtRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize(">"));
+  }
+
+  @Test
+  void symbolicLeRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize("<="));
+  }
+
+  @Test
+  void symbolicGeRejected() {
+    assertThrows(ExpressionCompileException.class, () -> lexer.tokenize(">="));
   }
 
   @Test

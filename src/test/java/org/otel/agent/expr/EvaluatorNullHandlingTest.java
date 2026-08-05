@@ -63,10 +63,18 @@ class EvaluatorNullHandlingTest {
 
   @Test
   void andTreatsNullBooleanAsFalse() {
-    // $arg0.electric && true — when electric is null (doesn't exist), left is false
+    // $arg0.electric and true — when electric is null (doesn't exist), left is false
     final Property missingProp = new Property(new RootSource.This(), List.of(new PropertySegment("nonexistent")), Object.class);
     final Condition c = new Compare(Compare.Op.EQ, missingProp, new Literal(true, Boolean.class), Boolean.class);
     assertFalse(new And(List.of(c, new Compare(Compare.Op.EQ, new Literal(true, Boolean.class), new Literal(true, Boolean.class), Boolean.class))).eval(ctx()));
+  }
+
+  @Test
+  void notTreatsNullAsTrue() {
+    // not $arg0.electric — null operand is treated as false for not, so not false == true
+    final Property nullProp = new Property(new RootSource.This(), List.of(new PropertySegment("nonexistent")), Object.class);
+    final Condition c = new Compare(Compare.Op.EQ, nullProp, new Literal(true, Boolean.class), Boolean.class);
+    assertTrue(new Not(c).eval(ctx(new Fixture())));
   }
 
   public static final class Fixture {

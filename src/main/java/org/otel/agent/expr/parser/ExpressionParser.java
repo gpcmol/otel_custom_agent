@@ -52,12 +52,12 @@ public final class ExpressionParser {
     return new TypeChecker(blockId, declaringClass, exitMethod).check(condition);
   }
 
-  // --- Precedence: || → && → ! → primary → comparison → in → arithmetic → atom ---
+  // --- Precedence: or → and → not → function call → comparison → in → arithmetic → atom ---
 
   private Condition parseOr() throws ExpressionCompileException {
     final List<Condition> terms = new ArrayList<>();
     terms.add(parseAnd());
-    while (current().type() == Token.Type.OR) {
+    while (isKeyword("or")) {
       advance();
       terms.add(parseAnd());
     }
@@ -67,7 +67,7 @@ public final class ExpressionParser {
   private Condition parseAnd() throws ExpressionCompileException {
     final List<Condition> terms = new ArrayList<>();
     terms.add(parseNot());
-    while (current().type() == Token.Type.AND) {
+    while (isKeyword("and")) {
       advance();
       terms.add(parseNot());
     }
@@ -75,8 +75,14 @@ public final class ExpressionParser {
   }
 
   private Condition parseNot() throws ExpressionCompileException {
-    if (current().type() == Token.Type.NOT) {
+    if (isKeyword("not")) {
+      final Token notToken = current();
       advance();
+      // not is a keyword, not a function: reject the adjacent 'not(' function-call form.
+      if (current().type() == Token.Type.LPAREN && current().position() == notToken.position() + "not".length()) {
+        throw new ExpressionCompileException(blockId, "syntax error",
+            "not is a keyword, not a function: 'not(' at " + current().position());
+      }
       return new Not(parseNot());
     }
     return parsePrimary();
@@ -101,29 +107,41 @@ public final class ExpressionParser {
 
   private Condition parseComparison() throws ExpressionCompileException {
     final Leaf left = parseArithmetic();
-    final Token.Type tt = current().type();
-    if (tt == Token.Type.EQ || tt == Token.Type.NE
-        || tt == Token.Type.LT || tt == Token.Type.GT
-        || tt == Token.Type.LE || tt == Token.Type.GE) {
-      final Compare.Op op = switch (tt) {
+    final Token t = current();
+    if (t.type() == Token.Type.EQ || t.type() == Token.Type.NE) {
+      final Compare.Op op = switch (t.type()) {
         case EQ -> Compare.Op.EQ;
         case NE -> Compare.Op.NE;
-        case LT -> Compare.Op.LT;
-        case GT -> Compare.Op.GT;
-        case LE -> Compare.Op.LE;
-        case GE -> Compare.Op.GE;
         default -> throw new IllegalStateException();
       };
       advance();
       final Leaf right = parseArithmetic();
       return new Compare(op, left, right, Object.class);
     }
-    if (tt == Token.Type.IN) {
+    if (t.type() == Token.Type.IDENTIFIER) {
+      final Compare.Op op = comparisonOp(t.text());
+      if (op != null) {
+        advance();
+        final Leaf right = parseArithmetic();
+        return new Compare(op, left, right, Object.class);
+      }
+    }
+    if (t.type() == Token.Type.IN) {
       advance();
       return parseIn(left);
     }
     // Bare boolean leaf (e.g. $arg0.electric) — implicit == true
     return new Compare(Compare.Op.EQ, left, new Literal(true, Boolean.class), Boolean.class);
+  }
+
+  private static Compare.Op comparisonOp(final String text) {
+    return switch (text) {
+      case "lt" -> Compare.Op.LT;
+      case "lte" -> Compare.Op.LE;
+      case "gt" -> Compare.Op.GT;
+      case "gte" -> Compare.Op.GE;
+      default -> null;
+    };
   }
 
   private Condition parseIn(final Leaf value) throws ExpressionCompileException {
@@ -298,6 +316,16 @@ public final class ExpressionParser {
   }
 
   // --- Token helpers ---
+
+  /**
+   * Contextual keyword match: the current token must be a plain IDENTIFIER with exactly the
+   * given text. Keywords are only recognized where an operator or prefix is expected — path
+   * segments after {@code .} / {@code [} are parsed as property names and never match here.
+   */
+  private boolean isKeyword(final String text) {
+    final Token t = current();
+    return t.type() == Token.Type.IDENTIFIER && t.text().equals(text);
+  }
 
   private Token current() {
     return tokens.get(pos);

@@ -20,15 +20,8 @@ public final class Lexer {
       TRUE,
       FALSE,
       NULL,
-      OR,
-      AND,
-      NOT,
       EQ,
       NE,
-      LT,
-      GT,
-      LE,
-      GE,
       IN,
       PLUS,
       MINUS,
@@ -146,27 +139,12 @@ public final class Lexer {
   private int scanOperatorOrPunctuation(final String input, final int start, final char c, final List<Token> tokens)
       throws ExpressionCompileException {
     return switch (c) {
-      case '|' -> {
-        if (consume(input, start, '|')) {
-          tokens.add(new Token(Token.Type.OR, "||", start));
-          yield start + 2;
-        }
-        throw new ExpressionCompileException("?", "syntax error", "unexpected '|' at " + start);
-      }
-      case '&' -> {
-        if (consume(input, start, '&')) {
-          tokens.add(new Token(Token.Type.AND, "&&", start));
-          yield start + 2;
-        }
-        throw new ExpressionCompileException("?", "syntax error", "unexpected '&' at " + start);
-      }
       case '!' -> {
         if (consume(input, start, '=')) {
           tokens.add(new Token(Token.Type.NE, "!=", start));
           yield start + 2;
         }
-        tokens.add(new Token(Token.Type.NOT, "!", start));
-        yield start + 1;
+        throw new ExpressionCompileException("?", "syntax error", "unexpected '!' at " + start);
       }
       case '=' -> {
         if (consume(input, start, '=')) {
@@ -174,22 +152,6 @@ public final class Lexer {
           yield start + 2;
         }
         throw new ExpressionCompileException("?", "syntax error", "unexpected '=' at " + start);
-      }
-      case '<' -> {
-        if (consume(input, start, '=')) {
-          tokens.add(new Token(Token.Type.LE, "<=", start));
-          yield start + 2;
-        }
-        tokens.add(new Token(Token.Type.LT, "<", start));
-        yield start + 1;
-      }
-      case '>' -> {
-        if (consume(input, start, '=')) {
-          tokens.add(new Token(Token.Type.GE, ">=", start));
-          yield start + 2;
-        }
-        tokens.add(new Token(Token.Type.GT, ">", start));
-        yield start + 1;
       }
       case '+' -> single(tokens, Token.Type.PLUS, "+", start);
       case '-' -> single(tokens, Token.Type.MINUS, "-", start);
