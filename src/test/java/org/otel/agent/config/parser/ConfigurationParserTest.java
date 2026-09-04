@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
 import org.otel.agent.config.model.CompiledConfiguration;
@@ -60,6 +61,43 @@ class ConfigurationParserTest {
     final CompiledConfiguration configuration = parser.parse(null, getClass().getClassLoader());
     assertEquals(0, configuration.staticRules().size());
     assertEquals(0, configuration.exitPoints().size());
+  }
+
+  @Test
+  void parsesTtlDuration() throws Exception {
+    final CompiledConfiguration configuration =
+        parser.parseXml("<configuration ttl=\"PT1H\"></configuration>", getClass().getClassLoader());
+    assertEquals(Duration.ofHours(1), configuration.ttl());
+  }
+
+  @Test
+  void absentTtlDefaultsTo24Hours() throws Exception {
+    final CompiledConfiguration configuration =
+        parser.parseXml("<configuration></configuration>", getClass().getClassLoader());
+    assertEquals(Duration.ofHours(24), configuration.ttl());
+  }
+
+  @Test
+  void unparseableTtlFallsBackTo24Hours() throws Exception {
+    final CompiledConfiguration configuration =
+        parser.parseXml("<configuration ttl=\"abc\"></configuration>", getClass().getClassLoader());
+    assertEquals(Duration.ofHours(24), configuration.ttl());
+  }
+
+  @Test
+  void negativeTtlFallsBackTo24Hours() throws Exception {
+    final CompiledConfiguration configuration =
+        parser.parseXml("<configuration ttl=\"-PT1S\"></configuration>", getClass().getClassLoader());
+    assertEquals(Duration.ofHours(24), configuration.ttl());
+  }
+
+  @Test
+  void schedulerOverflowTtlFallsBackTo24Hours() throws Exception {
+    final CompiledConfiguration configuration =
+        parser.parseXml(
+            "<configuration ttl=\"PT1000000000000000000S\"></configuration>",
+            getClass().getClassLoader());
+    assertEquals(Duration.ofHours(24), configuration.ttl());
   }
 
   private static String encoded(final String value) {

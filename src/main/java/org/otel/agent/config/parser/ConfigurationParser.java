@@ -3,6 +3,8 @@ package org.otel.agent.config.parser;
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -80,7 +82,30 @@ public final class ConfigurationParser {
     final Set<String> keys = new HashSet<>();
     final List<StaticAttributeRule> staticRules = parseStatic(root, keys);
     final List<ExitPoint> exitPoints = parseDynamic(root, keys, loader);
-    return new CompiledConfiguration(staticRules, exitPoints);
+    return new CompiledConfiguration(staticRules, exitPoints, parseTtl(root));
+  }
+
+  private Duration parseTtl(final Element root) {
+    final String value = root.getAttribute("ttl");
+    if (value.isEmpty()) return null;
+    try {
+      final Duration ttl = Duration.parse(value);
+      ttl.toNanos();
+      if (ttl.isNegative()) throw new DateTimeParseException("negative TTL", value, 0);
+      return ttl;
+    } catch (final DateTimeParseException exception) {
+      System.getLogger(ConfigurationParser.class.getName())
+          .log(
+              System.Logger.Level.WARNING,
+              "ttl '" + value + "' could not be parsed, using default " + CompiledConfiguration.DEFAULT_TTL);
+      return null;
+    } catch (final ArithmeticException exception) {
+      System.getLogger(ConfigurationParser.class.getName())
+          .log(
+              System.Logger.Level.WARNING,
+              "ttl '" + value + "' could not be represented, using default " + CompiledConfiguration.DEFAULT_TTL);
+      return null;
+    }
   }
 
   public Element parseXmlDocument(final byte[] bytes) throws ConfigurationException {
@@ -256,7 +281,7 @@ public final class ConfigurationParser {
     if (!"configuration".equals(element.getTagName()) || element.getNamespaceURI() != null) {
       throw new ConfigurationException("root element must be configuration without namespace");
     }
-    validateAttributes(element, Set.of());
+    validateAttributes(element, Set.of("ttl"));
     validateChildren(element, "static", "dynamic");
   }
 

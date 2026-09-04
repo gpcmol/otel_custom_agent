@@ -56,6 +56,33 @@ and `model` matches `x%` (case-insensitive), read these properties and write the
 span."* One enrich event per span-producing method exit. The `expr` gate is optional — omit it
 for unconditional enrichment.
 
+### Time-to-live (`ttl`)
+
+The root `<configuration>` element MAY carry an optional `ttl` attribute in
+[ISO-8601 duration](https://en.wikipedia.org/wiki/ISO_8601#Durations) notation
+(e.g. `PT1H` = 1 hour, `PT30S` = 30 seconds). After the TTL has elapsed, the
+custom instrumentation for that application class loader is disabled (the agent
+returns to its zero-cost baseline, no more enrichment or span writes) — use it
+to bound the debugging window so instrumentation costs end automatically:
+
+```xml
+<configuration ttl="PT1H">
+```
+
+- **Absent** — defaults to `PT24H` (24 hours). Every configuration expires; a
+  longer window requires an explicit `ttl` (e.g. `PT720H`).
+- **Unparseable** — one `WARNING` log line is emitted and the `PT24H` default
+  applies; the rest of the configuration stays active.
+- **Invalid** — negative or scheduler-unrepresentable values emit one `WARNING`
+  log line and use the `PT24H` default; `PT0S` disables immediately.
+- **Re-armed on reload** — reloading via the config webserver restarts the
+  countdown using the TTL of the newly submitted configuration.
+- **Expiry log** — each expiry emits exactly one log line stating that
+  instrumentation has been disabled. A later reload starts a new TTL and may
+  emit a new expiry log line.
+- The countdown is measured against a monotonic clock, so wall-clock changes
+  (NTP, manual adjustments) do not shorten or extend the window.
+
 ### Conditional enrichment with `expr`
 
 An `<enrich>` block MAY carry an optional `expr` attribute that gates the whole block. When the

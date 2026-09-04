@@ -100,9 +100,15 @@ class RuntimeBridgeMemoryLeakTest {
   /** Reflection-only access to the private STATES field — keeps the test independent of getters. */
   @SuppressWarnings("unchecked")
   private static Map<?, ?> readStates() throws ReflectiveOperationException {
-    final Field field = RuntimeBridge.class.getDeclaredField("STATES");
-    field.setAccessible(true);
-    return (Map<?, ?>) field.get(null);
+    final Field serviceField = RuntimeBridge.class.getDeclaredField("SERVICE");
+    serviceField.setAccessible(true);
+    final Object service = serviceField.get(null);
+    final Field storeField = RuntimeConfigurationService.class.getDeclaredField("states");
+    storeField.setAccessible(true);
+    final Object store = storeField.get(service);
+    final Field statesField = RuntimeStateStore.class.getDeclaredField("states");
+    statesField.setAccessible(true);
+    return (Map<?, ?>) statesField.get(store);
   }
 
   /** Best-effort GC: calls System.gc() several times until a canary WeakReference clears. */

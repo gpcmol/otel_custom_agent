@@ -61,6 +61,11 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
   public List<String> getAdditionalHelperClassNames() {
     return List.of(
         "org.otel.agent.bridge.RuntimeBridge",
+        "org.otel.agent.bridge.RuntimeConfigurationService",
+        "org.otel.agent.bridge.RuntimeStateStore",
+        "org.otel.agent.bridge.ApplicationClassLoaderBridge",
+        "org.otel.agent.bridge.TtlScheduler",
+        "org.otel.agent.bridge.TtlScheduler$Expiry",
         "org.otel.agent.bridge.RuntimeState",
         "org.otel.agent.bridge.ReloadResult",
         "org.otel.agent.config.model.CompiledConfiguration",
