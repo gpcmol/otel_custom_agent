@@ -272,4 +272,5 @@ Run scripts/./bench.sh to see the diff in % between config disabled and enabled 
 - done - expression language (expression dsl)
 - detect memory leaks
 - security on hot reload config endpoint (stomp using topics)
-- TTL on configuration. automatically expire the active configuration
+- done TTL on configuration. automatically expire the active configuration
+- done telemetry docker image
