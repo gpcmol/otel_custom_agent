@@ -245,6 +245,34 @@ The agent embeds a lightweight HTTP server on `http://127.0.0.1:14317/` (loopbac
 - Reload updates the rule index for classloaders registered at startup; it cannot instrument new root classes not matched at startup.
 - If port `14317` is already in use, the server logs a warning and remains down; enrichment continues with the startup configuration.
 
+## GitOps Configuration Reload
+
+For deployments that need configuration updates without restarting the JVM or autoinstrumentation,
+set `OTEL_CUSTOM_AGENT_CONFIG_FILE` to a local XML file. The agent checks the file every 5 seconds
+by default. Set `OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL` to a positive number of seconds to
+change the interval.
+
+The file configuration takes precedence over `OTEL_CUSTOM_AGENT_CONFIG`. If the file is missing,
+unreadable, or invalid, the last valid runtime configuration remains active and the agent retries
+on the next poll. At startup, `OTEL_CUSTOM_AGENT_CONFIG` remains the fallback source.
+
+The file can be a Kubernetes ConfigMap mount, for example:
+
+```yaml
+env:
+  - name: OTEL_CUSTOM_AGENT_CONFIG_FILE
+    value: /etc/otel-agent/config.xml
+  - name: OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL
+    value: "5"
+volumeMounts:
+  - name: agent-config
+    mountPath: /etc/otel-agent
+volumes:
+  - name: agent-config
+    configMap:
+      name: otel-agent-config
+```
+
 # Tokens
 
 ## First attempt version 1
@@ -271,6 +299,7 @@ Run scripts/./bench.sh to see the diff in % between config disabled and enabled 
 - done - avoid invoke, use LambdaMetafactory toepassen instead
 - done - expression language (expression dsl)
 - detect memory leaks
-- security on hot reload config endpoint (stomp using topics)
+- security on hot reload config endpoint (stomp using topics) - config from file instead
 - done TTL on configuration. automatically expire the active configuration
 - done telemetry docker image
+- done config from file

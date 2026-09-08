@@ -103,10 +103,18 @@ class RuntimeBridgeMemoryLeakTest {
     final Field serviceField = RuntimeBridge.class.getDeclaredField("SERVICE");
     serviceField.setAccessible(true);
     final Object service = serviceField.get(null);
-    final Field storeField = RuntimeConfigurationService.class.getDeclaredField("states");
+    final Class<?> serviceClass =
+        Class.forName("org.otel.agent.bridge.config.RuntimeConfiguration");
+    final Field runtimeField = serviceClass.getDeclaredField("runtime");
+    runtimeField.setAccessible(true);
+    final Object runtime = runtimeField.get(service);
+    final Class<?> runtimeClass =
+        Class.forName("org.otel.agent.bridge.runtime.RuntimeEngine");
+    final Field storeField = runtimeClass.getDeclaredField("states");
     storeField.setAccessible(true);
-    final Object store = storeField.get(service);
-    final Field statesField = RuntimeStateStore.class.getDeclaredField("states");
+    final Object store = storeField.get(runtime);
+    final Class<?> storeClass = Class.forName("org.otel.agent.bridge.runtime.RuntimeStateStore");
+    final Field statesField = storeClass.getDeclaredField("states");
     statesField.setAccessible(true);
     return (Map<?, ?>) statesField.get(store);
   }

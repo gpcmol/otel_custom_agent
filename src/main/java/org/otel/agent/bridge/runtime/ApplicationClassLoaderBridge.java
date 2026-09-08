@@ -1,6 +1,7 @@
-package org.otel.agent.bridge;
+package org.otel.agent.bridge.runtime;
 
 import java.lang.reflect.InvocationTargetException;
+import org.otel.agent.bridge.RuntimeState;
 
 /** Handles reflection across the agent extension and application classloader boundary. */
 final class ApplicationClassLoaderBridge {

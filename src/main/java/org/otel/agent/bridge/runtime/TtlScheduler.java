@@ -1,4 +1,4 @@
-package org.otel.agent.bridge;
+package org.otel.agent.bridge.runtime;
 
 import java.lang.ref.WeakReference;
 import java.time.Duration;
@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import org.otel.agent.bridge.RuntimeState;
 
 /** Schedules per-loader expiry without retaining application classloaders. */
 final class TtlScheduler {

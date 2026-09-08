@@ -1,4 +1,4 @@
-package org.otel.agent.bridge;
+package org.otel.agent.bridge.runtime;
 
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
-import org.otel.agent.config.model.CompiledConfiguration;
+import org.otel.agent.bridge.RuntimeState;
 import org.otel.agent.config.model.ExitPoint;
 
 /** Owns the bridge's per-loader state and the global instrumentation matcher data. */

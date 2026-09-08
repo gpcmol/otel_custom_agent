@@ -2,6 +2,7 @@ package org.otel.agent.bridge;
 
 import java.util.Map;
 import java.util.Set;
+import org.otel.agent.bridge.config.RuntimeConfiguration;
 import org.otel.agent.config.model.CompiledConfiguration;
 
 /**
@@ -11,7 +12,7 @@ import org.otel.agent.config.model.CompiledConfiguration;
  * reflection across classloaders, and TTL scheduling live in dedicated package classes.
  */
 public final class RuntimeBridge {
-  private static final RuntimeConfigurationService SERVICE = new RuntimeConfigurationService();
+  private static final RuntimeConfiguration SERVICE = new RuntimeConfiguration();
 
   private RuntimeBridge() {}
 
@@ -27,6 +28,18 @@ public final class RuntimeBridge {
 
   public static void initialize(final ClassLoader loader) {
     SERVICE.initialize(loader);
+  }
+
+  static void initializeForTesting(
+      final ClassLoader loader,
+      final String filePath,
+      final String reloadInterval,
+      final String encodedConfiguration) {
+    SERVICE.initialize(loader, filePath, reloadInterval, encodedConfiguration);
+  }
+
+  static long reloadIntervalForTesting(final String value) {
+    return RuntimeConfiguration.reloadInterval(value);
   }
 
   public static ReloadResult reload(final String xml) {
