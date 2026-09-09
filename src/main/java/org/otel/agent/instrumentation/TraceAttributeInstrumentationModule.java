@@ -61,8 +61,8 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
     return List.of(
         "org.otel.agent.bridge.RuntimeBridge",
         "org.otel.agent.bridge.config.RuntimeConfiguration",
-         "org.otel.agent.bridge.config.RuntimeConfigurationPublisher",
-         "org.otel.agent.bridge.config.RuntimeConfigurationFileReloader",
+        "org.otel.agent.bridge.config.RuntimeConfigurationPublisher",
+        "org.otel.agent.bridge.config.RuntimeConfigurationFileReloader",
         "org.otel.agent.bridge.config.ConfigurationRootScanner",
         "org.otel.agent.bridge.runtime.RuntimeEngine",
         "org.otel.agent.bridge.runtime.RuntimeStateStore",
@@ -117,9 +117,9 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
         "org.otel.agent.runtime.resolver.ValueResolver",
         "org.otel.agent.telemetry.AttributeConverter",
         "org.otel.agent.telemetry.AttributeValue",
-         "org.otel.agent.telemetry.SpanWriter",
-         "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$VoidAdvice",
-         "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$ValueAdvice",
-         "org.otel.agent.bridge.ReloadResult");
+        "org.otel.agent.telemetry.SpanWriter",
+        "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$VoidAdvice",
+        "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$ValueAdvice",
+        "org.otel.agent.bridge.ReloadResult");
   }
 }
