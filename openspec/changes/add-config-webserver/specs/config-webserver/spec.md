@@ -256,3 +256,5 @@ Tests MUST be runnable without Docker.
   original-config retrieval, reload success, reload failure isolation,
   concurrency safety, and application-safety requirements
 - **AND** all tests MUST pass without Docker
+> Status: superseded. This capability is intentionally removed and is not a
+> current agent requirement.

@@ -7,7 +7,8 @@ public record Garage(List<Customer> customers, List<Car> parkedCars) {
         return customers;
     }
 
-    public void park(Car car) {
-        parkedCars.add(car);
+    public Result park(Car car) {
+        final boolean accepted = parkedCars.add(car);
+        return new Result(accepted, accepted ? "accepted" : "rejected");
     }
 }

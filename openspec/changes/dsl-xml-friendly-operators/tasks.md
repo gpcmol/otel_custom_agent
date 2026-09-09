@@ -21,7 +21,7 @@
 
 ## 4. Spec examples, configs, and docs
 
-- [x] 4.1 Update the benchmark app config in `scripts/bench.sh` (`AGENT_CONFIG_B64`) to the word-operator form: `(... or ... ) and $arg0.mileage gt 0` — re-Base64 and verify the decoded XML matches
+- [x] 4.1 Update the benchmark app config in `config/agent-config.xml` to the word-operator form: `(... or ... ) and $arg0.mileage gt 0` and verify the XML matches
 - [x] 4.2 Update `README.md` DSL reference and examples to the word operators; add a note that expressions are XML-safe and need no escaping
 - [x] 4.3 Grep the repo for `<`, `>=`, `&&` inside `expr=`/`expr` attribute values (excluding `openspec/` change history) and rewrite any occurrences
 

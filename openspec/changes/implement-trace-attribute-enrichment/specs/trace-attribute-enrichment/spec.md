@@ -756,3 +756,5 @@ added.
   fallback span with the required static and dynamic typed attributes
 - **AND** all startup, runtime, classloader, security, and application-safety
   requirements MUST remain satisfied
+> Status: superseded for configuration-source requirements. Use
+> `OTEL_CUSTOM_AGENT_CONFIG_FILE` and the file-reload contract instead.

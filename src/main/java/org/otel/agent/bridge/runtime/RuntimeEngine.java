@@ -15,22 +15,17 @@ import org.otel.agent.runtime.model.ExitPointIndex;
 public final class RuntimeEngine {
   private final RuntimeStateStore states;
   private final ApplicationClassLoaderBridge applicationBridge;
-  private final TtlScheduler ttlScheduler;
 
   public RuntimeEngine() {
     states = new RuntimeStateStore();
     applicationBridge = new ApplicationClassLoaderBridge();
-    ttlScheduler = new TtlScheduler(states, applicationBridge);
   }
 
-  public void publish(
-      final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
+  public void publish(final ClassLoader loader, final CompiledConfiguration configuration) {
     final RuntimeState state =
         RuntimeState.enabled(configuration, new ExitPointIndex(configuration));
     states.publish(loader, state);
     applicationBridge.pushState(loader, state);
-    ttlScheduler.schedule(loader, configuration.ttl());
-    if (xml != null) states.setActiveXml(xml);
   }
 
   public synchronized ReloadResult reload(final String xml) {
@@ -88,12 +83,7 @@ public final class RuntimeEngine {
     return states.rootMethods();
   }
 
-  public String activeXml() {
-    return states.activeXml();
-  }
-
   public void reset() {
-    ttlScheduler.reset();
     states.reset();
   }
 

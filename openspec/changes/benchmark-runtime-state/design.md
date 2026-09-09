@@ -1,12 +1,12 @@
 ## Context
 
 The agent works in two modes:
-- **Disabled** (`RuntimeState.disabled()`): `TraceAttributeInstrumentationModule.classLoaderMatcher()` returns `false` → ByteBuddy does not instrument the classes → no advice → zero enrichment overhead. Occurs when `OTEL_CUSTOM_AGENT_CONFIG` is not set (but the javaagent is still attached).
+- **Disabled** (`RuntimeState.disabled()`): `TraceAttributeInstrumentationModule.classLoaderMatcher()` returns `false` → ByteBuddy does not instrument the classes → no advice → zero enrichment overhead. Occurs when no usable file configuration is available (but the javaagent is still attached).
 - **Enabled** (`RuntimeState.enabled()`): advice is injected on every method-exit of matched `Car` methods → `EnrichmentRuntime.enrich()` runs: `RuntimeBridge.state()` lookup (memoized volatile + synchronized fallback), span-context validation, static cache lookup, dynamic rule resolution via `RuleIndex` + `AccessorCache`, `AttributeValue`-writes to span.
 
 The `app/` application (port 8081) has a `POST /cars` endpoint that deserializes a `Car` (record with `brand` + `List<Passenger>`), calls `car.getBrand()` and `car.getPassengers()` (these methods are dynamically configured in `run-agent.sh`), and adds the Car to an in-memory garage. The OTLP stub (configurable port) captures spans and writes them to `telemetry.log`.
 
-`run-agent.sh` publishes a Base64-encoded config (line 20): static `domain=cars` + `team=winning`, dynamic `Car.brand` + `Car.passengers[1].name`.
+`run-agent.sh` publishes an XML file config: static `domain=cars` + `team=winning`, dynamic `Car.brand` + `Car.passengers[1].name`.
 
 ## Goals / Non-Goals
 
@@ -38,9 +38,9 @@ The `app/` application (port 8081) has a `POST /cars` endpoint that deserializes
 - **Decision**: In throughput runs `OTEL_TRACES_EXPORTER=none` so OTLP export is not a bottleneck. Verify-run enabled with `otlp` export to the stub, checks `telemetry.log` for attributes.
 - **Rationale**: The stub writes every span to `telemetry.log` (file I/O) — at 1M spans that dominates. With `none` you measure only instrumentation + enrich cost.
 
-### Always-attach javaagent; toggle via `OTEL_CUSTOM_AGENT_CONFIG`
+### Always-attach javaagent; toggle via the file configuration
 
-- **Decision**: Both enabled and disabled runs have `-javaagent:…` attached. Enabled sets `OTEL_CUSTOM_AGENT_CONFIG=<b64>`; disabled omits it → `RuntimeBridge.initialize` publishes `RuntimeState.disabled()` → `classLoaderMatcher` returns false → no instrumentation.
+- **Decision**: Both enabled and disabled runs have `-javaagent:…` attached. Enabled sets `OTEL_CUSTOM_AGENT_CONFIG_FILE`; disabled omits it → `RuntimeBridge.initialize` leaves `RuntimeState.disabled()` → `classLoaderMatcher` returns false → no instrumentation.
 - **Rationale**: Isolation: the only variable is the RuntimeState. Without the javaagent in the disabled run you would also measure JVM-level differences (no OTel SDK init). With the javaagent in both runs the comparison is fair ("javaagent attached; with vs without active config").
 
 ### Fixed-bucket histogram for p95/p99

@@ -12,8 +12,8 @@ final class RuntimeConfigurationPublisher {
     this.runtime = runtime;
   }
 
-  void publish(final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
-    runtime.publish(loader, configuration, xml);
+  void publish(final ClassLoader loader, final CompiledConfiguration configuration) {
+    runtime.publish(loader, configuration);
     logConfiguration(configuration);
   }
 

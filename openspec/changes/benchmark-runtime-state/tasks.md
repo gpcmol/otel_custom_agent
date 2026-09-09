@@ -8,7 +8,7 @@
 ## 2. Benchmark Orchestrator (Java)
 
 - [x] 2.1 Create `scripts/AgentBenchmark.java`: `ProcessBuilder` for OTLP stub + app (enabled/disabled/verify), JDK 21 `java.net.http.HttpClient` (one instance, async), `--mode` / `--warmup` / `--measurement` / `--concurrency` args
-- [x] 2.2 Implement app/stub process startup via ProcessBuilder with env vars (`OTEL_CUSTOM_AGENT_CONFIG`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`, etc. as env vars — NOT -D, since `RuntimeBridge` reads `System.getenv`); readiness poll on HTTP
+- [x] 2.2 Implement app/stub process startup via ProcessBuilder with env vars (`OTEL_CUSTOM_AGENT_CONFIG_FILE`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`, etc. as env vars — NOT -D, since `RuntimeBridge` reads `System.getenv`); readiness poll on HTTP
 - [x] 2.3 Implement load phase (warmup + measurement): async `HttpClient.sendAsync` with concurrency cap, fixed 1ms-bucket histogram for p95/p99, `DELETE /cars` between phases
 - [x] 2.4 Implement random `Car` + `Passenger` JSON body generation (random brand + 2–3 random passenger names so `[1]` index is always valid)
 - [x] 2.5 Redirect subprocess stdout/stderr to per-run log files (`build/benchmark/app-*.log`, `stub.log`) for clean console output

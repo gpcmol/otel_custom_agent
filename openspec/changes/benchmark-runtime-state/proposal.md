@@ -24,4 +24,4 @@ The OTel custom agent instruments application classes via ByteBuddy advice that 
 - **Build**: small `scripts/build.sh`; JMH not needed (JDK 25 HttpClient stdlib). `app/pom.xml` unchanged.
 - **App**: `app/src/main/java/com/example/Main.java` (COWAL → synchronized list; `DELETE /cars`); `app/src/main/java/otel/OtlpStub.java` (configurable host/port).
 - **Scripts**: `scripts/AgentBenchmark.java` (orchestrator + load-gen), `scripts/build.sh` (build-only). Replaces the old `benchmark-overhead.sh` + `LoadGenerator.java`.
-- **Runtime**: agent stays untouched; benchmark starts the agent via the `run-agent.sh` pattern (javaagent + `OTEL_CUSTOM_AGENT_CONFIG`).
+- **Runtime**: benchmark starts the agent via the `run-agent.sh` pattern (javaagent + `OTEL_CUSTOM_AGENT_CONFIG_FILE`).

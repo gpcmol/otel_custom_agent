@@ -83,6 +83,6 @@
 ## 11. Benchmark script robustness
 
 - [x] 11.1 Add `free_port <port>` helper to `scripts/bench.sh` — `lsof -t` finds listeners, SIGTERM, 1s wait, SIGKILL if needed; idempotent and `set -e`-safe via `|| true`
-- [x] 11.2 Add `free_required_ports` that frees `STUB_PORT` (4318), `APP_PORT` (8081), and `14317` (embedded config webserver)
+- [x] 11.2 Add `free_required_ports` that frees `STUB_PORT` (4318) and `APP_PORT` (8081)
 - [x] 11.3 Call `free_required_ports` before `start_stub` in both the `all|enabled|disabled` block and the `all|verify` block
 - [x] 11.4 Harden `stop_app`: `wait_port_free "$APP_PORT" || free_port "$APP_PORT"` — prevents silent `set -e` abort between enabled and disabled phases when a dying JVM is slow to release the port

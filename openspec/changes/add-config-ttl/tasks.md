@@ -28,3 +28,4 @@
 ## 4. Docs
 
 - [x] 4.1 Update the XML contract documentation (README / draft spec) with the optional `ttl` attribute, ISO-8601 duration notation, and the 24-hour default with logged fallback
+> Status: superseded. These completed TTL tasks describe removed functionality.

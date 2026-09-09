@@ -39,3 +39,6 @@ extension while preserving application behavior and avoiding new dependencies.
 - Runtime behavior is intentionally fail-safe: invalid startup configuration
   disables this extension, and enrichment failures do not alter application
   exceptions or return values.
+> Status: superseded. Startup configuration is now loaded from the XML file
+> specified by `OTEL_CUSTOM_AGENT_CONFIG_FILE`; the former Base64 environment
+> variable is no longer supported.

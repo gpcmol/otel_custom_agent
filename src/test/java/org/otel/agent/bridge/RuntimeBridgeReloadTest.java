@@ -2,7 +2,6 @@ package org.otel.agent.bridge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,15 +40,6 @@ class RuntimeBridgeReloadTest {
   }
 
   @Test
-  void reloadUpdatesActiveXml() {
-    publishStartupConfig("cars");
-
-    RuntimeBridge.reload(configXml("trucks"));
-
-    assertEquals(configXml("trucks"), RuntimeBridge.activeXml());
-  }
-
-  @Test
   void reloadFailureLeavesExistingStateUnchanged() {
     publishStartupConfig("cars");
 
@@ -75,43 +65,12 @@ class RuntimeBridgeReloadTest {
   }
 
   @Test
-  void reloadDoesNotDiscoverUnregisteredClassloaders() {
-    final ReloadResult result = RuntimeBridge.reload(configXml("trucks"));
-    assertEquals(0, result.updatedClassloaders());
-    assertNull(RuntimeBridge.activeXml());
-  }
-
-  @Test
   void reloadUpdatesRootClassNames() {
     publishStartupConfig("cars");
     assertTrue(RuntimeBridge.rootClassNames().contains(rootClassName()));
 
     RuntimeBridge.reload(configXml("trucks"));
     assertTrue(RuntimeBridge.rootClassNames().contains(rootClassName()));
-  }
-
-  @Test
-  void activeXmlIsNullBeforeAnyReload() {
-    assertNull(RuntimeBridge.activeXml());
-  }
-
-  @Test
-  void activeXmlIsSetAfterReload() {
-    publishStartupConfig("cars");
-    RuntimeBridge.reload(configXml("trucks"));
-    assertNotNull(RuntimeBridge.activeXml());
-    assertEquals(configXml("trucks"), RuntimeBridge.activeXml());
-  }
-
-  @Test
-  void reloadFailureDoesNotUpdateActiveXml() {
-    publishStartupConfig("cars");
-    RuntimeBridge.reload(configXml("trucks"));
-    final String beforeFailure = RuntimeBridge.activeXml();
-
-    RuntimeBridge.reload("<invalid>");
-
-    assertEquals(beforeFailure, RuntimeBridge.activeXml());
   }
 
   private void publishStartupConfig(final String team) {

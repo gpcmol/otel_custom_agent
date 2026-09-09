@@ -28,8 +28,7 @@ import org.otel.agent.bridge.RuntimeBridge;
  *
  * <p>Helper classes: {@link #getAdditionalHelperClassNames()} declares all agent-internal
  * classes that must be visible in the application class loader's namespace when the ByteBuddy
- * advice executes. This includes the bridge, config model, runtime, telemetry, and webserver
- * classes — everything the advice code references at runtime.
+ * advice executes.
  *
  * <p>Thread safety: the module instance is shared across all class loaders. The
  * {@code classLoaderMatcher} is called concurrently for different loaders;
@@ -62,16 +61,13 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
     return List.of(
         "org.otel.agent.bridge.RuntimeBridge",
         "org.otel.agent.bridge.config.RuntimeConfiguration",
-        "org.otel.agent.bridge.config.RuntimeConfigurationPublisher",
-        "org.otel.agent.bridge.config.RuntimeConfigurationFileReloader",
+         "org.otel.agent.bridge.config.RuntimeConfigurationPublisher",
+         "org.otel.agent.bridge.config.RuntimeConfigurationFileReloader",
         "org.otel.agent.bridge.config.ConfigurationRootScanner",
         "org.otel.agent.bridge.runtime.RuntimeEngine",
         "org.otel.agent.bridge.runtime.RuntimeStateStore",
         "org.otel.agent.bridge.runtime.ApplicationClassLoaderBridge",
-        "org.otel.agent.bridge.runtime.TtlScheduler",
-        "org.otel.agent.bridge.runtime.TtlScheduler$Expiry",
         "org.otel.agent.bridge.RuntimeState",
-        "org.otel.agent.bridge.ReloadResult",
         "org.otel.agent.config.model.CompiledConfiguration",
         "org.otel.agent.config.model.DynamicAttributeRule",
         "org.otel.agent.config.model.ExitPoint",
@@ -121,11 +117,9 @@ public final class TraceAttributeInstrumentationModule extends InstrumentationMo
         "org.otel.agent.runtime.resolver.ValueResolver",
         "org.otel.agent.telemetry.AttributeConverter",
         "org.otel.agent.telemetry.AttributeValue",
-        "org.otel.agent.telemetry.SpanWriter",
-        "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$VoidAdvice",
-        "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$ValueAdvice",
-        "org.otel.agent.utils.Base64Util",
-        "org.otel.agent.webserver.ConfigWebserver",
-        "org.otel.agent.webserver.ConfigPage");
+         "org.otel.agent.telemetry.SpanWriter",
+         "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$VoidAdvice",
+         "org.otel.agent.instrumentation.TraceAttributeTypeInstrumentation$ValueAdvice",
+         "org.otel.agent.bridge.ReloadResult");
   }
 }

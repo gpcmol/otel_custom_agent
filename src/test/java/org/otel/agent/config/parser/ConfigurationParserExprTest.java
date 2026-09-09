@@ -4,18 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import org.junit.jupiter.api.Test;
 import org.otel.agent.config.model.CompiledConfiguration;
 
 class ConfigurationParserExprTest {
 
   private final ConfigurationParser parser = new ConfigurationParser();
-
-  private static String encoded(final String value) {
-    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
-  }
 
   @Test
   void validExprProducesNonNullCondition() throws Exception {
@@ -31,7 +25,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    final CompiledConfiguration config = parser.parseXml(xml, getClass().getClassLoader());
     assertNotNull(config.exitPoints().getFirst().condition());
   }
 
@@ -49,7 +43,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    final CompiledConfiguration config = parser.parseXml(xml, getClass().getClassLoader());
     assertNull(config.exitPoints().getFirst().condition());
   }
 
@@ -67,7 +61,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    final CompiledConfiguration config = parser.parseXml(xml, getClass().getClassLoader());
     assertNull(config.exitPoints().getFirst().condition());
   }
 
@@ -88,7 +82,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    final CompiledConfiguration config = parser.parseXml(xml, getClass().getClassLoader());
     assertNotNull(config.exitPoints().getFirst().condition());
   }
 
@@ -106,7 +100,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    final CompiledConfiguration config = parser.parse(encoded(xml), getClass().getClassLoader());
+    final CompiledConfiguration config = parser.parseXml(xml, getClass().getClassLoader());
     assertNull(config.exitPoints().getFirst().condition());
   }
 
@@ -128,7 +122,7 @@ class ConfigurationParserExprTest {
             </dynamic>
         </configuration>
         """;
-    assertThrows(ConfigurationException.class, () -> parser.parse(encoded(xml), getClass().getClassLoader()));
+    assertThrows(ConfigurationException.class, () -> parser.parseXml(xml, getClass().getClassLoader()));
   }
 
   public static final class Fixture {

@@ -131,7 +131,7 @@ public final class EnrichmentRuntime {
         new ConfigurationParser().parseXml(xml, applicationLoader);
     final ExitPointIndex exitIndex = new ExitPointIndex(configuration);
     setState(RuntimeState.enabled(configuration, exitIndex));
-    RuntimeBridge.publish(applicationLoader, configuration, xml);
+    RuntimeBridge.publish(applicationLoader, configuration);
   }
 
   /**

@@ -154,3 +154,5 @@ instrumentation.
 - None blocking. Naming of the attribute (`ttl` vs `duration`) is cosmetic;
   `ttl` chosen for brevity, aligned with existing terse attribute names (`key`,
   `path`, `class`, `method`).
+> Status: superseded. Do not implement this design; TTL is no longer part of the
+> configuration contract.

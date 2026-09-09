@@ -6,10 +6,10 @@ Build a Java OpenTelemetry Java Agent extension that adds configured static and
 runtime-derived attributes to spans when configured application objects are
 used.
 
-The developer-facing configuration remains Base64-encoded XML in the
-environment variable `OTEL_CUSTOM_AGENT_CONFIG`. The XML path is a small
-configuration DSL only. It is parsed once at startup and must not exist in the
-runtime model afterward.
+The developer-facing configuration is XML in a file named by
+`OTEL_CUSTOM_AGENT_CONFIG_FILE`. The XML path is a small configuration DSL only.
+It is parsed at startup and when the file changes; compiled rules are kept in
+the runtime model.
 
 The implementation must use Java and OpenTelemetry APIs/dependencies already
 provided by the agent build. Do not add an XML, reflection, bytecode, or
@@ -21,7 +21,7 @@ configuration framework dependency.
 
 - Static attributes applied to every enriched span.
 - Dynamic attributes resolved from the instrumented receiver (`this`).
-- Base64 decoding and XML parsing at startup.
+- XML parsing at startup and on file changes.
 - Immutable compiled rules and a startup-built rule index.
 - Byte Buddy/OTel agent instrumentation for configured root classes.
 - Getter-first, field-second property access.
@@ -36,7 +36,6 @@ configuration framework dependency.
 - Map traversal.
 - Static method or static field traversal.
 - Constructor, field-write, or arbitrary method instrumentation.
-- Runtime configuration reload.
 - Multiple configuration sources or configuration merging.
 - Attribute transformations, filtering expressions, conditionals, aggregation,
   or custom user code.
@@ -45,12 +44,10 @@ configuration framework dependency.
 
 ## 3. User Configuration Contract
 
-The environment variable name is exactly `OTEL_CUSTOM_AGENT_CONFIG`.
-
-Its value is standard Base64 containing UTF-8 XML. Whitespace around the
-environment-variable value may be ignored. A blank value, invalid Base64, or
-non-UTF-8 input is a configuration error. A missing variable disables the
-extension quietly.
+The configuration file path is supplied through `OTEL_CUSTOM_AGENT_CONFIG_FILE`.
+`OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL` controls file polling in seconds and
+defaults to 5 when absent or invalid. A missing or invalid file leaves the
+extension disabled until a valid file becomes available.
 
 The accepted document has this shape:
 
@@ -127,22 +124,20 @@ com.example.Garage.customers[0].city
 
 Startup occurs once, before application classes are instrumented or used.
 
-1. Read `OTEL_CUSTOM_AGENT_CONFIG`.
-2. Decode standard Base64.
-3. Decode bytes as UTF-8 using a strict decoder.
-4. Parse XML with the JDK standard XML parser.
-5. Configure secure XML processing: disable external entity resolution, DTDs,
+1. Read the XML file from `OTEL_CUSTOM_AGENT_CONFIG_FILE`.
+2. Parse XML with the JDK standard XML parser.
+3. Configure secure XML processing: disable external entity resolution, DTDs,
    external schemas, and external access where supported by the JDK. XML must
    not read local files, network resources, or execute entities.
-6. Validate document structure, attributes, keys, duplicate keys, and paths.
-7. Resolve configured root classes using the agent's application classloader
+4. Validate document structure, attributes, keys, duplicate keys, and paths.
+5. Resolve configured root classes using the agent's application classloader
    strategy. Failure to resolve any configured root class is a configuration
    error; do not silently instrument nothing.
-8. Build immutable static rules, dynamic rules, path segments, accessor/cache
+6. Build immutable static rules, dynamic rules, path segments, accessor/cache
    metadata, and the rule index.
-9. Register instrumentation only for successfully resolved configured root
+7. Register instrumentation only for successfully resolved configured root
    classes.
-10. Publish the completed immutable runtime state atomically.
+8. Publish the completed immutable runtime state atomically.
 
 Any startup error produces one concise error log, disables this extension, and
 leaves the application running. A disabled extension must not register partial

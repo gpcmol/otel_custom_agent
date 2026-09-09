@@ -4,7 +4,7 @@ The agent has two modes:
 - **Disabled** (`RuntimeState.disabled()`): `TraceAttributeInstrumentationModule.classLoaderMatcher()` returns `false` → no instrumentation; zero enrichment overhead.
 - **Enabled** (`RuntimeState.enabled()`): ByteBuddy advice runs on matched `Car` methods; `EnrichmentRuntime.enrich()` enriches spans.
 
-The `app/` (port 8081) exposes `POST /cars` (deserializes `Car`, calls `getBrand()` + `getPassengers()` — dynamically configured) and `DELETE /cars` (resets garage). The OTLP stub (`otel.OtlpStub`, configurable port) captures spans into `telemetry.log`. `run-agent.sh` line 20 holds the Base64 config: static `domain=cars` + `team=winning`, dynamic `Car.brand` + `Car.passengers[1].name`.
+The `app/` (port 8081) exposes `POST /cars` (deserializes `Car`, calls `getBrand()` + `getPassengers()` — dynamically configured) and `DELETE /cars` (resets garage). The OTLP stub (`otel.OtlpStub`, configurable port) captures spans into `telemetry.log`. `run-agent.sh` points `OTEL_CUSTOM_AGENT_CONFIG_FILE` at the XML config: static `domain=cars` + `team=winning`, dynamic `Car.brand` + `Car.passengers[1].name`.
 
 Prior state: a Java/JMH `benchmark/` submodule did the equivalent. This change replaces it with a bash + k6 combination. The load logic (10k warmup, 1M measurement, enabled/disabled/verify phases) is preserved.
 

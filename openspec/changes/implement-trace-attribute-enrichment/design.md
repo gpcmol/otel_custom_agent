@@ -285,3 +285,5 @@ version, bootstrap bridge, logging API, and test framework from the project
 before writing code. If the repository is still only a specification
 repository, project setup is a prerequisite task rather than an invitation to
 invent a different agent architecture.
+> Status: superseded. The original Base64 environment configuration described
+> here was replaced by file-only configuration.

@@ -80,7 +80,7 @@ class RuntimeBridgeMemoryLeakTest {
   private void publish() {
     try {
       final CompiledConfiguration config = new ConfigurationParser().parseXml(configXml(), loader);
-      RuntimeBridge.publish(loader, config, configXml());
+      RuntimeBridge.publish(loader, config);
     } catch (final Exception exception) {
       throw new AssertionError("test config should be valid", exception);
     }

@@ -105,3 +105,5 @@ bookkeeping must preserve the existing classloader-unload guarantee.
 
 - **WHEN** the system wall clock is adjusted while a `ttl="PT1H"` config is active
 - **THEN** the disable still fires approximately 1 hour of real CPU time after publish
+> Status: superseded. This capability is intentionally removed and is not a
+> current agent requirement.

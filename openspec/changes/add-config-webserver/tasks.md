@@ -50,3 +50,4 @@
 - [x] 5.2 Run SonarLint/static-analysis and SpotBugs checks on the new code; fix all findings, verify no production `var`, explicit final locals/parameters, try-with-resources for `AutoCloseable` resources, and text blocks for multiline HTML.
 - [x] 5.3 Run the complete Gradle quality/test command and verify all existing tests still pass alongside the new webserver and reload tests.
 - [x] 5.4 Add a manual smoke-test note documenting `http://127.0.0.1:14317/` access, current-config display, XML paste, Activate click, Load Original click to revert to the `OTEL_CUSTOM_AGENT_CONFIG` default, and expected response formats.
+> Status: superseded. These completed webserver tasks describe removed functionality.

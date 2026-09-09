@@ -8,8 +8,8 @@ import org.otel.agent.config.model.CompiledConfiguration;
 /**
  * Public entry point between the agent extension classloader and application classloaders.
  *
- * <p>This class intentionally contains only the bridge API. Configuration lifecycle, state storage,
- * reflection across classloaders, and TTL scheduling live in dedicated package classes.
+ * <p>This class intentionally contains only the bridge API. Configuration lifecycle and state
+ * storage live in dedicated package classes.
  */
 public final class RuntimeBridge {
   private static final RuntimeConfiguration SERVICE = new RuntimeConfiguration();
@@ -18,12 +18,7 @@ public final class RuntimeBridge {
 
   public static synchronized void publish(
       final ClassLoader loader, final CompiledConfiguration configuration) {
-    SERVICE.publish(loader, configuration, null);
-  }
-
-  public static synchronized void publish(
-      final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
-    SERVICE.publish(loader, configuration, xml);
+    SERVICE.publish(loader, configuration);
   }
 
   public static void initialize(final ClassLoader loader) {
@@ -31,11 +26,8 @@ public final class RuntimeBridge {
   }
 
   static void initializeForTesting(
-      final ClassLoader loader,
-      final String filePath,
-      final String reloadInterval,
-      final String encodedConfiguration) {
-    SERVICE.initialize(loader, filePath, reloadInterval, encodedConfiguration);
+      final ClassLoader loader, final String filePath, final String reloadInterval) {
+    SERVICE.initialize(loader, filePath, reloadInterval);
   }
 
   static long reloadIntervalForTesting(final String value) {
@@ -60,10 +52,6 @@ public final class RuntimeBridge {
 
   public static Map<String, Set<String>> rootClassMethods() {
     return SERVICE.rootMethods();
-  }
-
-  public static String activeXml() {
-    return SERVICE.activeXml();
   }
 
   public static void resetForTesting() {

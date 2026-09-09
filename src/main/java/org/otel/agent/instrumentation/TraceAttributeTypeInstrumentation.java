@@ -16,6 +16,7 @@ import io.opentelemetry.javaagent.extension.instrumentation.TypeTransformer;
 import java.lang.reflect.Method;
 import java.util.Set;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import org.otel.agent.bridge.RuntimeBridge;
@@ -94,8 +95,7 @@ final class TraceAttributeTypeInstrumentation implements TypeInstrumentation {
 
   @Override
   public void transform(final TypeTransformer transformer) {
-    final net.bytebuddy.matcher.ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription>
-        base =
+    final ElementMatcher.Junction<MethodDescription> base =
             isMethod()
                 .and(not(isConstructor()))
                 .and(not(isStatic()))

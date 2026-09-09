@@ -47,3 +47,5 @@
 - [ ] 5.6a Ensure the smoke-test model uses public JavaBean getters; record component accessors alone MUST NOT be used to validate getter-based resolution.
 - [x] 5.7 Configure Shadow and extended-agent packaging plus Gradle system properties for agent, extension, and extended-agent paths; verify extension-jar, extension-directory, and embedded-extension loading modes where available.
 - [ ] 5.8 Make Docker-dependent smoke tests safely skippable when Docker or the target image is unavailable, while keeping all unit/parser/resolver tests runnable without Docker.
+> Status: superseded. The original startup-source tasks describe removed
+> Base64 environment configuration.

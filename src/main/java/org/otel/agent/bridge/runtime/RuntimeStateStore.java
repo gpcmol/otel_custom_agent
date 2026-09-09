@@ -19,7 +19,6 @@ final class RuntimeStateStore {
   private final Map<ClassLoader, Boolean> enabled = new WeakHashMap<>();
   private Set<String> rootNames = Set.of();
   private Map<String, Set<String>> rootMethods = Map.of();
-  private String activeXml;
 
   synchronized void publish(final ClassLoader loader, final RuntimeState state) {
     states.put(loader, new WeakReference<>(state));
@@ -72,19 +71,10 @@ final class RuntimeStateStore {
     return rootMethods;
   }
 
-  synchronized String activeXml() {
-    return activeXml;
-  }
-
-  synchronized void setActiveXml(final String xml) {
-    activeXml = xml;
-  }
-
   synchronized void reset() {
     states.clear();
     enabled.clear();
     rootNames = Set.of();
     rootMethods = Map.of();
-    activeXml = null;
   }
 }

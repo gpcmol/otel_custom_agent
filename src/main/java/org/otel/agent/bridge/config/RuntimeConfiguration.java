@@ -6,15 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.otel.agent.bridge.ReloadResult;
 import org.otel.agent.bridge.RuntimeState;
 import org.otel.agent.bridge.runtime.RuntimeEngine;
 import org.otel.agent.config.model.CompiledConfiguration;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
-import org.otel.agent.utils.Base64Util;
-import org.otel.agent.webserver.ConfigWebserver;
 
 /** Coordinates configuration sources while delegating each concern to a focused component. */
 public final class RuntimeConfiguration {
@@ -22,7 +19,6 @@ public final class RuntimeConfiguration {
   private final RuntimeConfigurationPublisher publisher;
   private final ConfigurationRootScanner rootScanner;
   private final RuntimeConfigurationFileReloader fileReloader;
-  private final AtomicBoolean webserverStarted = new AtomicBoolean();
 
   public RuntimeConfiguration() {
     runtime = new RuntimeEngine();
@@ -31,34 +27,26 @@ public final class RuntimeConfiguration {
     fileReloader = new RuntimeConfigurationFileReloader(publisher::reload);
   }
 
-  public void publish(
-      final ClassLoader loader, final CompiledConfiguration configuration, final String xml) {
-    publisher.publish(loader, configuration, xml);
+  public void publish(final ClassLoader loader, final CompiledConfiguration configuration) {
+    publisher.publish(loader, configuration);
   }
 
   public void initialize(final ClassLoader loader) {
     initialize(
         loader,
         System.getenv("OTEL_CUSTOM_AGENT_CONFIG_FILE"),
-        System.getenv("OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL"),
-        System.getenv("OTEL_CUSTOM_AGENT_CONFIG"));
+        System.getenv("OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL"));
   }
 
   public void initialize(
-      final ClassLoader loader,
-      final String filePathValue,
-      final String intervalValue,
-      final String encodedConfiguration) {
+      final ClassLoader loader, final String filePathValue, final String intervalValue) {
     if (isInitialized(loader)) return;
 
     final Path file = configFile(filePathValue);
     if (file != null) {
       startFileReload(file, intervalValue);
-      startWebserver();
       if (initializeFile(loader, file)) return;
     }
-
-    initializeEnvironment(loader, encodedConfiguration);
   }
 
   public ReloadResult reload(final String xml) {
@@ -81,14 +69,8 @@ public final class RuntimeConfiguration {
     return runtime.rootMethods();
   }
 
-  public String activeXml() {
-    return runtime.activeXml();
-  }
-
   public void reset() {
     fileReloader.stop();
-    ConfigWebserver.stop();
-    webserverStarted.set(false);
     publisher.reset();
   }
 
@@ -103,8 +85,9 @@ public final class RuntimeConfiguration {
   private boolean initializeFile(final ClassLoader loader, final Path file) {
     try {
       final String xml = Files.readString(file, StandardCharsets.UTF_8);
-      if (!initializeXml(loader, xml)) {
-        logFileFailure(file, "invalid configuration");
+      final ConfigurationException failure = initializeXml(loader, xml);
+      if (failure != null) {
+        if (!isClassLoaderMismatch(failure)) logFileFailure(file, failure.getMessage());
         return false;
       }
       fileReloader.markLoaded(xml);
@@ -115,43 +98,20 @@ public final class RuntimeConfiguration {
     }
   }
 
-  private boolean initializeXml(final ClassLoader loader, final String xml) {
+  private ConfigurationException initializeXml(final ClassLoader loader, final String xml) {
     rootScanner.prepare(xml, loader);
     try {
       final CompiledConfiguration configuration = new ConfigurationParser().parseXml(xml, loader);
-      publisher.publish(loader, configuration, xml);
-      return true;
+      publisher.publish(loader, configuration);
+      return null;
     } catch (final ConfigurationException exception) {
-      return false;
+      return exception;
     }
   }
 
-  private void initializeEnvironment(final ClassLoader loader, final String encodedConfiguration) {
-    if (encodedConfiguration == null) {
-      runtime.disable(loader);
-      return;
-    }
-
-    startWebserver();
-    final String xml = decodeToXml(encodedConfiguration);
-    if (xml != null) rootScanner.prepare(xml, loader);
-    try {
-      final CompiledConfiguration configuration =
-          new ConfigurationParser().parse(encodedConfiguration, loader);
-      publisher.publish(loader, configuration, xml);
-    } catch (final ConfigurationException exception) {
-      runtime.disable(loader);
-    }
-  }
-
-  private void startWebserver() {
-    if (!webserverStarted.compareAndSet(false, true)) return;
-    try {
-      ConfigWebserver.start();
-    } catch (final Exception exception) {
-      System.getLogger(RuntimeConfiguration.class.getName())
-          .log(System.Logger.Level.WARNING, "config webserver failed to start", exception);
-    }
+  private static boolean isClassLoaderMismatch(final ConfigurationException exception) {
+    return exception.getMessage() != null
+        && exception.getMessage().startsWith("exit-point class cannot be resolved:");
   }
 
   private static Path configFile(final String value) {
@@ -166,14 +126,6 @@ public final class RuntimeConfiguration {
       return seconds > 0 ? seconds : 5;
     } catch (final NumberFormatException exception) {
       return 5;
-    }
-  }
-
-  private static String decodeToXml(final String encoded) {
-    try {
-      return new String(Base64Util.decode(encoded), StandardCharsets.UTF_8);
-    } catch (final ConfigurationException exception) {
-      return null;
     }
   }
 

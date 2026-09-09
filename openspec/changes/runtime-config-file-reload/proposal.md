@@ -1,15 +1,18 @@
+> Status: implemented. This is the only supported configuration source; the former
+> environment fallback and configuration webserver were removed afterward.
+
 ## Why
 
-The current webserver can update the agent configuration at runtime, but that interface is intentionally insecure and suitable only for demos. A file-backed configuration source enables GitOps workflows, including Kubernetes ConfigMaps, without restarting the application or its autoinstrumentation.
+A file-backed configuration source enables GitOps workflows, including Kubernetes ConfigMaps,
+without restarting the application or its autoinstrumentation.
 
 ## What Changes
 
-- Add an optional environment variable for the path to a runtime configuration file.
-- Add an optional polling interval environment variable, defaulting to 5 seconds.
+- Use `OTEL_CUSTOM_AGENT_CONFIG_FILE` for the configuration file path.
+- Keep `OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL`, defaulting to 5 seconds.
 - Poll the configured file and load a new configuration when its contents change.
-- Give the file-backed configuration precedence over `OTEL_CUSTOM_AGENT_CONFIG`.
-- Preserve `OTEL_CUSTOM_AGENT_CONFIG` as the fallback configuration source.
-- Keep the existing webserver available for demo use.
+- Use the file as the only configuration source.
+- Do not expose an embedded configuration webserver.
 - Do not require an application or autoinstrumentation restart when the file configuration changes.
 
 ## Capabilities
@@ -28,4 +31,4 @@ The current webserver can update the agent configuration at runtime, but that in
 - Environment variable documentation and deployment configuration.
 - Filesystem polling and change detection.
 - Kubernetes deployments using ConfigMap-mounted files.
-- Existing webserver behavior remains available and unchanged.
+- The former Base64 environment configuration and embedded webserver are no longer supported.

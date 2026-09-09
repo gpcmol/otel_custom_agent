@@ -7,10 +7,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.otel.agent.bridge.runtime.RuntimeEngine;
 import org.otel.agent.config.parser.ConfigurationException;
 import org.otel.agent.config.parser.ConfigurationParser;
-import org.otel.agent.bridge.runtime.RuntimeEngine;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /** Prepares the root classes used by the instrumentation matcher. */
 final class ConfigurationRootScanner {
@@ -58,10 +60,10 @@ final class ConfigurationRootScanner {
 
   private static List<Element> childrenByName(final Element parent, final String name) {
     final List<Element> result = new ArrayList<>();
-    final org.w3c.dom.NodeList nodes = parent.getChildNodes();
+    final NodeList nodes = parent.getChildNodes();
     for (int i = 0; i < nodes.getLength(); i++) {
-      final org.w3c.dom.Node node = nodes.item(i);
-      if (node.getNodeType() == org.w3c.dom.Node.ELEMENT_NODE
+      final Node node = nodes.item(i);
+      if (node.getNodeType() == Node.ELEMENT_NODE
           && (name == null || name.equals(node.getNodeName()))) {
         result.add((Element) node);
       }

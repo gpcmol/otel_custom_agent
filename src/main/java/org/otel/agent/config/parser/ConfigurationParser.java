@@ -3,8 +3,6 @@ package org.otel.agent.config.parser;
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,7 +21,6 @@ import org.otel.agent.config.model.StaticAttributeRule;
 import org.otel.agent.expr.Condition;
 import org.otel.agent.expr.ExpressionCompileException;
 import org.otel.agent.expr.parser.ExpressionParser;
-import org.otel.agent.utils.Base64Util;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -33,10 +30,7 @@ import org.xml.sax.InputSource;
 /**
  * Parses XML configuration into an immutable {@link CompiledConfiguration}.
  *
- * <p>Two entry points: {@link #parse(String, ClassLoader)} for Base64-encoded startup config
- * (read from the {@code OTEL_CUSTOM_AGENT_CONFIG} environment variable), and
- * {@link #parseXml(String, ClassLoader)} for raw XML submitted at runtime via the config
- * webserver. Both paths share the same secure XML parsing pipeline and validation rules.
+ * <p>The parser accepts raw XML for startup and file reloads using one secure parsing pipeline.
  *
  * <p>XML is parsed with {@link DocumentBuilderFactory} configured for secure processing:
  * external entities, DTDs, and external schema resolution are all disabled to prevent XXE
@@ -57,17 +51,6 @@ import org.xml.sax.InputSource;
  * distinguish parse failures from successful compilation.
  */
 public final class ConfigurationParser {
-  public CompiledConfiguration parse(final String encoded, final ClassLoader applicationLoader)
-      throws ConfigurationException {
-    if (encoded == null) {
-      return new CompiledConfiguration(List.of(), List.of());
-    }
-    if (encoded.trim().isEmpty()) {
-      throw new ConfigurationException("configuration is blank");
-    }
-    return compile(parseXmlDocument(Base64Util.decode(encoded)), applicationLoader);
-  }
-
   public CompiledConfiguration parseXml(final String xml, final ClassLoader loader)
       throws ConfigurationException {
     if (xml == null || xml.trim().isEmpty()) {
@@ -82,30 +65,7 @@ public final class ConfigurationParser {
     final Set<String> keys = new HashSet<>();
     final List<StaticAttributeRule> staticRules = parseStatic(root, keys);
     final List<ExitPoint> exitPoints = parseDynamic(root, keys, loader);
-    return new CompiledConfiguration(staticRules, exitPoints, parseTtl(root));
-  }
-
-  private Duration parseTtl(final Element root) {
-    final String value = root.getAttribute("ttl");
-    if (value.isEmpty()) return null;
-    try {
-      final Duration ttl = Duration.parse(value);
-      ttl.toNanos();
-      if (ttl.isNegative()) throw new DateTimeParseException("negative TTL", value, 0);
-      return ttl;
-    } catch (final DateTimeParseException exception) {
-      System.getLogger(ConfigurationParser.class.getName())
-          .log(
-              System.Logger.Level.WARNING,
-              "ttl '" + value + "' could not be parsed, using default " + CompiledConfiguration.DEFAULT_TTL);
-      return null;
-    } catch (final ArithmeticException exception) {
-      System.getLogger(ConfigurationParser.class.getName())
-          .log(
-              System.Logger.Level.WARNING,
-              "ttl '" + value + "' could not be represented, using default " + CompiledConfiguration.DEFAULT_TTL);
-      return null;
-    }
+    return new CompiledConfiguration(staticRules, exitPoints);
   }
 
   public Element parseXmlDocument(final byte[] bytes) throws ConfigurationException {
@@ -281,7 +241,7 @@ public final class ConfigurationParser {
     if (!"configuration".equals(element.getTagName()) || element.getNamespaceURI() != null) {
       throw new ConfigurationException("root element must be configuration without namespace");
     }
-    validateAttributes(element, Set.of("ttl"));
+    validateAttributes(element, Set.of());
     validateChildren(element, "static", "dynamic");
   }
 

@@ -2,8 +2,6 @@ package org.otel.agent.config.parser;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import org.junit.jupiter.api.Test;
 
 class ConfigurationValidationTest {
@@ -13,8 +11,8 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded("<configuration><static/><static/></configuration>"),
+                .parseXml(
+                    "<configuration><static/><static/></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -24,9 +22,8 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><static><attribute key='x' value='y' extra='z'/></static></configuration>"),
+                .parseXml(
+                    "<configuration><static><attribute key='x' value='y' extra='z'/></static></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -36,10 +33,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich method=\"process\">"
-                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich method=\"process\">"
+                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -49,10 +45,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"java.lang.Object\">"
-                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"java.lang.Object\">"
+                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -62,14 +57,13 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic>"
+                .parseXml(
+                    "<configuration><dynamic>"
                             + "<enrich class=\"java.lang.Object\" method=\"toString\">"
                             + "<attribute key=\"x\" path=\"$this.x\"/></enrich>"
                             + "<enrich class=\"java.lang.Object\" method=\"toString\">"
                             + "<attribute key=\"y\" path=\"$this.y\"/></enrich>"
-                            + "</dynamic></configuration>"),
+                            + "</dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -79,10 +73,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"com.nonexistent.Foo\" method=\"process\">"
-                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"com.nonexistent.Foo\" method=\"process\">"
+                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -92,10 +85,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"noSuchMethod\">"
-                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"noSuchMethod\">"
+                            + "<attribute key=\"x\" path=\"$this.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -105,10 +97,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><attribute key=\"x\" path=\"java.lang.Object.toString\"/>"
-                            + "</dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><attribute key=\"x\" path=\"java.lang.Object.toString\"/>"
+                            + "</dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -118,10 +109,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
-                            + "<attribute key=\"x\" path=\"$receiver.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
+                            + "<attribute key=\"x\" path=\"$receiver.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -131,10 +121,9 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
-                            + "<attribute key=\"x\" path=\"$arg.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
+                            + "<attribute key=\"x\" path=\"$arg.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
@@ -144,14 +133,10 @@ class ConfigurationValidationTest {
         ConfigurationException.class,
         () ->
             new ConfigurationParser()
-                .parse(
-                    encoded(
-                        "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
-                            + "<attribute key=\"x\" path=\"$arg999.x\"/></enrich></dynamic></configuration>"),
+                .parseXml(
+                    "<configuration><dynamic><enrich class=\"java.lang.Object\" method=\"toString\">"
+                            + "<attribute key=\"x\" path=\"$arg999.x\"/></enrich></dynamic></configuration>",
                     getClass().getClassLoader()));
   }
 
-  private static String encoded(final String value) {
-    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
-  }
 }

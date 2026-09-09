@@ -12,15 +12,15 @@ The benchmark SHALL be orchestrated by `scripts/bench.sh`, which builds agent + 
 
 #### Scenario: Enabled run sets car config
 - **WHEN** the orchestrator starts the app for the enabled run
-- **THEN** `OTEL_CUSTOM_AGENT_CONFIG` SHALL be set to the Base64 car config from run-agent.sh, the javaagent SHALL be attached (`-javaagent`), and `OTEL_TRACES_EXPORTER=none` SHALL be set
+- **THEN** `OTEL_CUSTOM_AGENT_CONFIG_FILE` SHALL point to the XML car config from run-agent.sh, the javaagent SHALL be attached (`-javaagent`), and `OTEL_TRACES_EXPORTER=none` SHALL be set
 
 #### Scenario: Disabled run omits config but keeps javaagent
 - **WHEN** the orchestrator starts the app for the disabled run
-- **THEN** `OTEL_CUSTOM_AGENT_CONFIG` SHALL be empty while `-javaagent` remains attached and `OTEL_TRACES_EXPORTER=none` SHALL be set
+- **THEN** `OTEL_CUSTOM_AGENT_CONFIG_FILE` SHALL be unset while `-javaagent` remains attached and `OTEL_TRACES_EXPORTER=none` SHALL be set
 
 #### Scenario: Isolation — javaagent always attached
 - **WHEN** both enabled and disabled runs have completed
-- **THEN** the javaagent SHALL have been attached in both runs (enabled and disabled); the ONLY variable between runs SHALL be whether `OTEL_CUSTOM_AGENT_CONFIG` is set or empty
+- **THEN** the javaagent SHALL have been attached in both runs (enabled and disabled); the ONLY configuration difference between runs SHALL be whether `OTEL_CUSTOM_AGENT_CONFIG_FILE` is set
 
 #### Scenario: Readiness polled before k6 run
 - **WHEN** the orchestrator starts the stub or app

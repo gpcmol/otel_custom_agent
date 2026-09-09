@@ -242,3 +242,5 @@ a critical path — its failure must not affect enrichment.
 
 - None. The port (`14317`), binding (`127.0.0.1`), input format (raw XML),
   and reload scope (registered loaders only) are all decided.
+> Status: superseded. Do not implement this design; runtime configuration is
+> now managed exclusively through the XML file.

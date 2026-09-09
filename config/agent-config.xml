@@ -1,0 +1,27 @@
+<configuration>
+    <static>
+        <attribute key="debug" value="true"/>
+        <attribute key="domain" value="cars"/>
+        <attribute key="team" value="winning"/>
+        <attribute key="environment" value="production"/>
+        <attribute key="region" value="eu-west"/>
+        <attribute key="service" value="garage"/>
+    </static>
+    <dynamic>
+        <enrich class="com.example.Garage" method="park"
+                expr="($arg0.brand == 'bmw' or $arg0.brand == 'audi' or $arg0.brand == 'vw' or $arg0.brand == 'mercedes' or $arg0.brand == 'toyota' or $arg0.brand == 'honda' or $arg0.brand == 'ford' or $arg0.brand == 'renault') and $arg0.mileage gt 0">
+            <attribute key="brand" path="$arg0.brand"/>
+            <attribute key="model" path="$arg0.model"/>
+            <attribute key="year" path="$arg0.year"/>
+            <attribute key="color" path="$arg0.color"/>
+            <attribute key="licensePlate" path="$arg0.licensePlate"/>
+            <attribute key="vin" path="$arg0.vin"/>
+            <attribute key="mileage" path="$arg0.mileage"/>
+            <attribute key="fuelType" path="$arg0.fuelType"/>
+            <attribute key="transmission" path="$arg0.transmission"/>
+            <attribute key="passengers" path="$arg0.passengers[1].name"/>
+            <attribute key="accepted" path="$return.accepted"/>
+            <attribute key="status" path="$return.status"/>
+        </enrich>
+    </dynamic>
+</configuration>

@@ -58,3 +58,5 @@ reintroduce runtime string parsing.
 - **THEN** it MUST delegate to `ConfigurationParser` and `RuntimeBridge`
 - **AND** it MUST NOT duplicate parsing, validation, or rule-index logic
 - **AND** no second configuration format or merging MUST be introduced
+> Status: superseded. The embedded configuration webserver and the Base64
+> environment configuration were removed in favor of XML file configuration.

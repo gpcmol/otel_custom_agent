@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-./scripts/build.sh && java -jar benchmark/target/benchmark-jmh.jar --mode all
+./scripts/build.sh && ./scripts/bench.sh --mode all

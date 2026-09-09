@@ -30,15 +30,15 @@ The benchmark SHALL use JDK 21 `java.net.http.HttpClient` to execute a warmup ph
 - **THEN** 1,000,000 `POST /cars` requests SHALL be sent with random car + passenger data
 
 ### Requirement: Benchmark orchestrator runs agent enabled vs disabled via ProcessBuilder
-The benchmark SHALL start the app twice via `java.lang.ProcessBuilder`: once with `-javaagent` + `OTEL_CUSTOM_AGENT_CONFIG` (enabled), once with `-javaagent` but no config (disabled → `RuntimeState.disabled()`).
+The benchmark SHALL start the app twice via `java.lang.ProcessBuilder`: once with `-javaagent` + `OTEL_CUSTOM_AGENT_CONFIG_FILE` (enabled), once with `-javaagent` but no file config (disabled → `RuntimeState.disabled()`).
 
 #### Scenario: Disabled run has no config
 - **WHEN** the benchmark starts the app for the disabled run
-- **THEN** `OTEL_CUSTOM_AGENT_CONFIG` SHALL be unset while `-javaagent` remains attached
+- **THEN** `OTEL_CUSTOM_AGENT_CONFIG_FILE` SHALL be unset while `-javaagent` remains attached
 
 #### Scenario: Enabled run has car config
 - **WHEN** the benchmark starts the app for the enabled run
-- **THEN** `OTEL_CUSTOM_AGENT_CONFIG` SHALL be set to the Base64 car config from run-agent.sh
+- **THEN** `OTEL_CUSTOM_AGENT_CONFIG_FILE` SHALL be set to the XML car config from run-agent.sh
 
 ### Requirement: Throughput and latency metrics are reported
 The benchmark SHALL report throughput (requests per second) and p95/p99 latency for each phase.

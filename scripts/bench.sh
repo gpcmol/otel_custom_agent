@@ -8,7 +8,7 @@ set -euo pipefail
 # written as markdown to build/benchmark-results/runtime-state-benchmark-<ts>.md.
 #
 # The javaagent is always attached (-javaagent). The only variable between runs is the
-# OTEL_CUSTOM_AGENT_CONFIG env var: set for "enabled", empty for "disabled". This isolates
+# file configuration: present for "enabled", absent for "disabled". This isolates
 # the enrichment overhead as the sole difference (RuntimeState.enabled vs .disabled).
 #
 # Usage: bench.sh [--mode all|enabled|disabled|verify]
@@ -22,13 +22,12 @@ AGENT_JAR="$ROOT_DIR/build/otel/opentelemetry-javaagent.jar"
 APP_JAR="$ROOT_DIR/app/target/garage-1.0-SNAPSHOT.jar"
 TELEMETRY_LOG="$ROOT_DIR/telemetry.log"
 
-# run-agent.sh line 20 Base64 config: 5 static (domain, team, environment, region, service)
-# and 10 dynamic rules on the com.example.Garage.park exit point — Car is passed as $arg0
+# config/agent-config.xml: 5 static (domain, team, environment, region, service)
+# and 11 dynamic rules on the com.example.Garage.park exit point — Car is passed as $arg0
 # (brand, model, year, color, licensePlate, vin, mileage, fuelType, transmission,
 # passengers[1].name). The expr gate enriches any of 8 brands (bmw, audi, vw, mercedes, toyota,
-# honda, ford, renault) with mileage gt 0. Set as OTEL_CUSTOM_AGENT_CONFIG for the enabled run; omitted for
+# honda, ford, renault) with mileage gt 0. Use the file for the enabled run; omit it for
 # disabled. One enrich event per park call (vs the previous per-getter model's ten).
-AGENT_CONFIG_B64="PGNvbmZpZ3VyYXRpb24+CiAgICA8c3RhdGljPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJkb21haW4iIHZhbHVlPSJjYXJzIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRlYW0iIHZhbHVlPSJ3aW5uaW5nIi8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9ImVudmlyb25tZW50IiB2YWx1ZT0icHJvZHVjdGlvbiIvPgogICAgICAgIDxhdHRyaWJ1dGUga2V5PSJyZWdpb24iIHZhbHVlPSJldS13ZXN0Ii8+CiAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InNlcnZpY2UiIHZhbHVlPSJnYXJhZ2UiLz4KICAgIDwvc3RhdGljPgogICAgPGR5bmFtaWM+CiAgICAgICAgPGVucmljaCBjbGFzcz0iY29tLmV4YW1wbGUuR2FyYWdlIiBtZXRob2Q9InBhcmsiCiAgICAgICAgICAgICAgICBleHByPSIoJGFyZzAuYnJhbmQgPT0gJ2Jtdycgb3IgJGFyZzAuYnJhbmQgPT0gJ2F1ZGknIG9yICRhcmcwLmJyYW5kID09ICd2dycgb3IgJGFyZzAuYnJhbmQgPT0gJ21lcmNlZGVzJyBvciAkYXJnMC5icmFuZCA9PSAndG95b3RhJyBvciAkYXJnMC5icmFuZCA9PSAnaG9uZGEnIG9yICRhcmcwLmJyYW5kID09ICdmb3JkJyBvciAkYXJnMC5icmFuZCA9PSAncmVuYXVsdCcpIGFuZCAkYXJnMC5taWxlYWdlIGd0IDAiPgogICAgICAgICAgICA8YXR0cmlidXRlIGtleT0iYnJhbmQiIHBhdGg9IiRhcmcwLmJyYW5kIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJtb2RlbCIgcGF0aD0iJGFyZzAubW9kZWwiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InllYXIiIHBhdGg9IiRhcmcwLnllYXIiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9ImNvbG9yIiBwYXRoPSIkYXJnMC5jb2xvciIvPgogICAgICAgICAgICA8YXR0cmlidXRlIGtleT0ibGljZW5zZVBsYXRlIiBwYXRoPSIkYXJnMC5saWNlbnNlUGxhdGUiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InZpbiIgcGF0aD0iJGFyZzAudmluIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJtaWxlYWdlIiBwYXRoPSIkYXJnMC5taWxlYWdlIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJmdWVsVHlwZSIgcGF0aD0iJGFyZzAuZnVlbFR5cGUiLz4KICAgICAgICAgICAgPGF0dHJpYnV0ZSBrZXk9InRyYW5zbWlzc2lvbiIgcGF0aD0iJGFyZzAudHJhbnNtaXNzaW9uIi8+CiAgICAgICAgICAgIDxhdHRyaWJ1dGUga2V5PSJwYXNzZW5nZXJzIiBwYXRoPSIkYXJnMC5wYXNzZW5nZXJzWzFdLm5hbWUiLz4KICAgICAgICA8L2VucmljaD4KICAgIDwvZHluYW1pYz4KPC9jb25maWd1cmF0aW9uPg=="
 
 HOST=127.0.0.1
 STUB_PORT=4318
@@ -137,7 +136,6 @@ free_port() {
 free_required_ports() {
   free_port "$STUB_PORT"
   free_port "$APP_PORT"
-  free_port 14317
 }
 
 # start_stub — launch the OTLP stub as a background JVM, wait until ready.
@@ -156,7 +154,7 @@ start_stub() {
 # start_app <mode: enabled|disabled> <export_traces: true|false>
 #
 # The javaagent is always attached. The only difference between enabled/disabled is
-# OTEL_CUSTOM_AGENT_CONFIG: set to the Base64 config for "enabled", empty for "disabled".
+# the file configuration: present for "enabled", absent for "disabled".
 # An empty config makes RuntimeBridge publish RuntimeState.disabled() → classLoaderMatcher
 # returns false → no ByteBuddy instrumentation → zero enrichment overhead.
 #   local exp="otlp" always exports to collector
@@ -166,9 +164,9 @@ start_app() {
   local exp="none"
   [ "$export_traces" = "true" ] && exp="otlp"
   log "Starting app (mode=$mode, export=$exp)..."
-  local env_cfg=""
-  if [ "$mode" != "disabled" ]; then env_cfg="$AGENT_CONFIG_B64"; fi
-  OTEL_CUSTOM_AGENT_CONFIG="$env_cfg" \
+  local config_file=""
+  if [ "$mode" != "disabled" ]; then config_file="$ROOT_DIR/config/agent-config.xml"; fi
+  OTEL_CUSTOM_AGENT_CONFIG_FILE="$config_file" \
   OTEL_EXPORTER_OTLP_ENDPOINT="http://$HOST:$STUB_PORT" \
   OTEL_JAVAAGENT_DEBUG="false" \
   OTEL_METRICS_EXPORTER="none" \

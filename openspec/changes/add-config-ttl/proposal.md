@@ -58,3 +58,5 @@ zero-cost disabled baseline automatically after a configured TTL.
 - Webserver reload path — re-arms the timer from the reloaded XML.
 - Tests: parser validation, expiry behaviour, reload re-arm, backward
   compatibility.
+> Status: superseded. TTL was removed; configuration remains active while the
+> configured XML file remains valid.

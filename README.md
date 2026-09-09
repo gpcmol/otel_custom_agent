@@ -1,8 +1,34 @@
-# Intro
-This is a opentelemetry custom agent
+# Introduction
+
+The OpenTelemetry Custom Agent gives development teams an operational switch for debugging
+applications in production without restarting them. A team can place a declarative XML
+configuration file in a mounted volume for a specific application. The agent polls that file,
+loads valid changes, and activates them at runtime.
+
+This makes production debugging targeted and temporary in practice: enable the configuration for
+one application, collect the traces that matter, then remove or update the file when debugging is
+finished.
 
 # Purpose
-Purpose is for development teams to define declarative configuration for dynamically adding proprties to spans
+
+The agent enriches spans with application-specific attributes defined in XML. Those attributes can
+be used by the OpenTelemetry tail sampler to keep selected traces. For example, a tail-sampling
+configuration can include:
+
+```yaml
+- name: debug
+  type: string_attribute
+  string_attribute:
+    key: debug
+    values: ["true"]
+```
+
+When the agent configuration sets `debug=true` on a span, the trace matches this policy and is
+captured. Other configured attributes can be used to filter and investigate traces in Grafana
+Tempo.
+
+The main benefit is a per-application debugging switch: teams can increase observability where it
+is needed without capturing and storing large volumes of traces that are not being investigated.
 
 # Information
 - draft folder - the first idea on paper
@@ -19,6 +45,33 @@ Purpose is for development teams to define declarative configuration for dynamic
 
 # Configuration
 
+The agent reads its configuration from the XML file named by
+`OTEL_CUSTOM_AGENT_CONFIG_FILE`. `OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL` controls how often
+the file is checked and defaults to 5 seconds. There is no environment-variable XML fallback,
+embedded configuration webserver, or configuration TTL.
+
+## Exit points
+
+An **exit point** is an application method where the agent enriches the current span when the
+method returns. In the example below, `Garage.park(Car car)` is the exit point:
+
+```java
+public final class Garage {
+    public Result park(Car car) {
+        // The agent enriches the current span when this method exits.
+        // The method argument is available in the XML configuration as $arg0.
+        boolean accepted = parkedCars.add(car);
+        return new Result(accepted, accepted ? "accepted" : "rejected");
+    }
+}
+```
+
+The XML configuration identifies the exit point with `class="com.example.Garage"` and
+`method="park"`. Paths beginning with `$arg0` read properties from the first method argument,
+in this case the `Car` object. `$this` refers to the `Garage` instance and `$return` refers to the
+method's return value. Because `park` returns a `Result` object, properties of that object can be
+captured with paths such as `path="$return.accepted"` and `path="$return.status"`.
+
 Declare one **exit point** per span-producing method. Each `<enrich class method>` block bundles
 the attribute rules that apply when that method exits. Paths start from a configurable root:
 `$this` (receiver), `$argN` (Nth parameter, 0..127), or `$return` (return value). The rest of
@@ -27,6 +80,7 @@ each path uses the existing property/index grammar (e.g. `passengers[1].name`).
 ```xml
 <configuration>
     <static>
+        <attribute key="debug" value="true"/>
         <attribute key="domain" value="cars"/>
         <attribute key="team" value="winning"/>
         <attribute key="environment" value="production"/>
@@ -46,6 +100,8 @@ each path uses the existing property/index grammar (e.g. `passengers[1].name`).
             <attribute key="fuelType" path="$arg0.fuelType"/>
             <attribute key="transmission" path="$arg0.transmission"/>
             <attribute key="passengers" path="$arg0.passengers[1].name"/>
+            <attribute key="accepted" path="$return.accepted"/>
+            <attribute key="status" path="$return.status"/>
         </enrich>
     </dynamic>
 </configuration>
@@ -55,33 +111,6 @@ Reads as: *"when `com.example.Garage.park` exits, if the first argument's `brand
 and `model` matches `x%` (case-insensitive), read these properties and write them on the current
 span."* One enrich event per span-producing method exit. The `expr` gate is optional — omit it
 for unconditional enrichment.
-
-### Time-to-live (`ttl`)
-
-The root `<configuration>` element MAY carry an optional `ttl` attribute in
-[ISO-8601 duration](https://en.wikipedia.org/wiki/ISO_8601#Durations) notation
-(e.g. `PT1H` = 1 hour, `PT30S` = 30 seconds). After the TTL has elapsed, the
-custom instrumentation for that application class loader is disabled (the agent
-returns to its zero-cost baseline, no more enrichment or span writes) — use it
-to bound the debugging window so instrumentation costs end automatically:
-
-```xml
-<configuration ttl="PT1H">
-```
-
-- **Absent** — defaults to `PT24H` (24 hours). Every configuration expires; a
-  longer window requires an explicit `ttl` (e.g. `PT720H`).
-- **Unparseable** — one `WARNING` log line is emitted and the `PT24H` default
-  applies; the rest of the configuration stays active.
-- **Invalid** — negative or scheduler-unrepresentable values emit one `WARNING`
-  log line and use the `PT24H` default; `PT0S` disables immediately.
-- **Re-armed on reload** — reloading via the config webserver restarts the
-  countdown using the TTL of the newly submitted configuration.
-- **Expiry log** — each expiry emits exactly one log line stating that
-  instrumentation has been disabled. A later reload starts a new TTL and may
-  emit a new expiry log line.
-- The countdown is measured against a monotonic clock, so wall-clock changes
-  (NTP, manual adjustments) do not shorten or extend the window.
 
 ### Conditional enrichment with `expr`
 
@@ -214,36 +243,7 @@ section is unchanged.
 
 # Used tooling
 - opencode with gitnexus, ponytail and openspec
-- gpt-5.6 luna
-- glm 5.2
-- M3
-- Laguna S 2.1 Free
-
-# Configuration Webserver
-
-The agent embeds a lightweight HTTP server on `http://127.0.0.1:14317/` (loopback only, no external access) that lets operators view and update the declarative configuration at runtime without restarting the JVM.
-
-## Usage
-
-1. Open `http://127.0.0.1:14317/` in a browser.
-2. The **Current Configuration** section shows the active XML.
-3. Paste new XML into the textarea and click **Activate** to reload. The response shows rule and classloader counts. Invalid XML returns an error without changing the active state.
-4. Click **Load Original** to fill the textarea with the decoded `OTEL_CUSTOM_AGENT_CONFIG` startup value, then **Activate** to revert to the default.
-
-## Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | HTML configuration UI |
-| GET | `/config/current` | Active XML (`text/xml`) or 404 |
-| GET | `/config/original` | Decoded startup XML (`text/xml`), 404 if env var absent, 500 on invalid Base64 |
-| POST | `/config` | Reload with raw XML body (`text/xml`); 200 on success, 400 on invalid XML |
-
-## Limitations
-
-- The server binds to `127.0.0.1` only; no authentication or TLS.
-- Reload updates the rule index for classloaders registered at startup; it cannot instrument new root classes not matched at startup.
-- If port `14317` is already in use, the server logs a warning and remains down; enrichment continues with the startup configuration.
+- gpt-5.6 luna, glm 5.2, M3, Laguna S 2.1 Free
 
 ## GitOps Configuration Reload
 
@@ -252,9 +252,9 @@ set `OTEL_CUSTOM_AGENT_CONFIG_FILE` to a local XML file. The agent checks the fi
 by default. Set `OTEL_CUSTOM_AGENT_CONFIG_RELOAD_INTERVAL` to a positive number of seconds to
 change the interval.
 
-The file configuration takes precedence over `OTEL_CUSTOM_AGENT_CONFIG`. If the file is missing,
-unreadable, or invalid, the last valid runtime configuration remains active and the agent retries
-on the next poll. At startup, `OTEL_CUSTOM_AGENT_CONFIG` remains the fallback source.
+The file is the only configuration source. If it is missing, unreadable, or invalid, the last valid
+runtime configuration remains active and the agent retries on the next poll. If no valid file has
+been loaded at startup, enrichment remains disabled until one becomes available.
 
 The file can be a Kubernetes ConfigMap mount, for example:
 
@@ -273,21 +273,6 @@ volumes:
       name: otel-agent-config
 ```
 
-# Tokens
-
-## First attempt version 1
-```
-GPT-5.6 Luna
-386,423 tokens
-$23.67 spent
-```
-## Webserver added 
-```
-GLM 5.2
-201,564 tokens
-$14.39 spent
-```
-
 ## Signoz
 Signoz can be installed in kind kubernetes from signoz/./up.sh
 
@@ -299,7 +284,5 @@ Run scripts/./bench.sh to see the diff in % between config disabled and enabled 
 - done - avoid invoke, use LambdaMetafactory toepassen instead
 - done - expression language (expression dsl)
 - detect memory leaks
-- security on hot reload config endpoint (stomp using topics) - config from file instead
-- done TTL on configuration. automatically expire the active configuration
 - done telemetry docker image
 - done config from file

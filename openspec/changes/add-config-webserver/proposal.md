@@ -61,3 +61,5 @@ existing instrumentation.
   re-registration is added.
 - The webserver lifecycle is tied to the agent extension lifecycle: started
   once during initialization, stopped on agent shutdown where supported.
+> Status: superseded. The embedded configuration webserver was removed in favor
+> of file-only GitOps configuration.
