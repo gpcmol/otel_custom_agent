@@ -1,4 +1,16 @@
-# OpenSpec v2: Declarative OpenTelemetry Trace Attribute Enrichment Agent
+# Historical draft — superseded
+
+This document describes the original flat dynamic-attribute design. It is retained for history and
+must not be used as the current implementation contract. The current contracts are:
+
+- `openspec/specs/trace-attribute-enrichment/spec.md`
+- `openspec/specs/condition-dsl/spec.md`
+- `openspec/specs/runtime-config-reload/spec.md`
+
+The current XML model uses `<dynamic><enrich class="..." method="...">` blocks and
+`$this`/`$argN`/`$return` roots.
+
+# OpenSpec v2: Declarative OpenTelemetry Trace Attribute Enrichment Agent (historical)
 
 ## 1. Purpose
 

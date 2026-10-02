@@ -32,7 +32,8 @@ is needed without capturing and storing large volumes of traces that are not bei
 
 # Information
 - draft folder - the first idea on paper
-- openspec folder - from idea to spec
+- openspec/specs - current implementation contract
+- openspec/changes - historical and in-progress change records
 - app folder - example app to test the agent in real live
 - src folder - the agent code
 

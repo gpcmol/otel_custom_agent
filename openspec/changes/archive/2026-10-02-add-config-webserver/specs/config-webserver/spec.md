@@ -1,3 +1,6 @@
+> **SUPERSEDED — historical capability.** The embedded webserver was removed. The current agent
+> uses file-backed reload only; see `openspec/specs/runtime-config-reload/spec.md`.
+
 ## ADDED Requirements
 
 ### Requirement: The webserver SHALL use only JDK APIs and no new dependencies

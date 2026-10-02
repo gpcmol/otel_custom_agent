@@ -1,4 +1,7 @@
-# config-ttl — Time-to-live on agent configuration
+# config-ttl — superseded historical change
+
+> TTL is not part of the current agent contract. See
+> `openspec/specs/runtime-config-reload/spec.md`.
 
 ## ADDED Requirements
 

@@ -1,3 +1,6 @@
+> **SUPERSEDED — historical webserver design.** The embedded configuration webserver and Base64
+> configuration source were removed. See `openspec/specs/trace-attribute-enrichment/spec.md`.
+
 ## MODIFIED Requirements
 
 ### Requirement: The implementation SHALL keep package responsibilities separate

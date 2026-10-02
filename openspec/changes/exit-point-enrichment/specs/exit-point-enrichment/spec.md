@@ -1,3 +1,7 @@
+> **Historical change record.** The exit-point behavior is now consolidated in
+> `openspec/specs/trace-attribute-enrichment/spec.md`. The benchmark-only requirements below are
+> retained as implementation history; the removed webserver port is not part of the current agent.
+
 ## ADDED Requirements
 
 ### Requirement: Exit-point enrichment SHALL enrich at one declared method per span
@@ -206,7 +210,7 @@ The benchmark application MUST expose a domain method (e.g., `Garage.park(Car ca
 
 ### Requirement: Benchmark script SHALL free required ports before starting
 
-The benchmark script (`scripts/bench.sh`) MUST free all ports it requires — the OTLP stub port, the application port, and the agent's embedded config-webserver port (14317) — before starting any subprocess. A `free_port` helper MUST use `lsof -t` to find listening PIDs, send SIGTERM, wait 1 second, and if the port is still held, send SIGKILL. The pre-flight MUST be idempotent: if no process holds the port, the helper MUST return immediately without error.
+The benchmark script (`scripts/bench.sh`) MUST free all ports it requires — the OTLP stub port and the application port — before starting any subprocess. A `free_port` helper MUST use `lsof -t` to find listening PIDs, send SIGTERM, wait 1 second, and if the port is still held, send SIGKILL. The pre-flight MUST be idempotent: if no process holds the port, the helper MUST return immediately without error.
 
 The script MUST call this pre-flight before both the enabled/disabled benchmark phases and the verify phase. If a prior run (or a manually started app) left a process on any required port, the script MUST kill it rather than fail silently with "Address already in use".
 

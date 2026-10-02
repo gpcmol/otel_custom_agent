@@ -1,3 +1,7 @@
+> **Historical change record.** This delta is consolidated into the current contract at
+> `openspec/specs/trace-attribute-enrichment/spec.md`. In particular, the current contract has no
+> embedded webserver, Base64 configuration source, or TTL.
+
 ## MODIFIED Requirements
 
 ### Requirement: XML configuration SHALL follow the exact contract

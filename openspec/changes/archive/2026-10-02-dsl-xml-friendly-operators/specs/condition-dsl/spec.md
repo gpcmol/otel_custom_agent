@@ -1,3 +1,6 @@
+> **Historical change record.** This change is incorporated into the current contract at
+> `openspec/specs/condition-dsl/spec.md`.
+
 ## MODIFIED Requirements
 
 ### Requirement: The V1 DSL grammar SHALL support a fixed expression vocabulary

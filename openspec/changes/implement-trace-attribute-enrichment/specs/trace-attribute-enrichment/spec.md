@@ -1,3 +1,7 @@
+> **SUPERSEDED BASE SPEC.** This specification describes the pre-exit-point implementation and
+> flat dynamic paths. The current contract is
+> `openspec/specs/trace-attribute-enrichment/spec.md`.
+
 ## ADDED Requirements
 
 ### Requirement: The extension SHALL use the existing agent platform

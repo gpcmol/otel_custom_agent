@@ -1,3 +1,7 @@
+> **SUPERSEDED BASE SPEC.** The symbolic-operator version below was replaced by
+> `openspec/changes/dsl-xml-friendly-operators/specs/condition-dsl/spec.md`. The consolidated
+> current contract is `openspec/specs/condition-dsl/spec.md`.
+
 ## ADDED Requirements
 
 ### Requirement: The `<enrich>` element SHALL accept an optional `expr` attribute
