@@ -30,8 +30,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ toLower(github.repository) }}:${{ github.ref_name }}
-            ghcr.io/${{ toLower(github.repository) }}:latest
+            ghcr.io/gpcmol/otel_custom_agent:${{ github.ref_name }}
+            ghcr.io/gpcmol/otel_custom_agent:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

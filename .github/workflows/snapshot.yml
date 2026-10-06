@@ -44,6 +44,6 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ toLower(github.repository) }}:snapshot
+          tags: ghcr.io/gpcmol/otel_custom_agent:snapshot
           cache-from: type=gha
           cache-to: type=gha,mode=max
