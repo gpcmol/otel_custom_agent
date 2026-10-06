@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "org.otel"
-version = "0.1.0-SNAPSHOT"
+version = providers.gradleProperty("version").orElse("0.0.0-SNAPSHOT").get()
 
 repositories {
   mavenCentral()

@@ -44,6 +44,31 @@ is needed without capturing and storing large volumes of traces that are not bei
 - run the run-agent.sh script to start the example application with the custom agent
 - post data again the cars endpoint of the example application using app/car.http
 
+# Docker image
+
+The agent is published as a Docker image to the GitHub Container Registry:
+`ghcr.io/gpcmol/otel_custom_agent`. The image contains only the custom extension
+(`/extensions/otel-custom-agent.jar`) — the auto-instrumentation agent is provided by the
+platform and loads the extension via
+`-Dotel.javaagent.extensions=/extensions/otel-custom-agent.jar`.
+
+## CI/CD
+
+- A branch builds a Gradle `SNAPSHOT` and publishes it as the mutable
+  `ghcr.io/gpcmol/otel_custom_agent:snapshot` tag. Every new branch build replaces the
+  previous snapshot image, so only the latest snapshot remains.
+- A pull request builds the snapshot and Docker image for verification, but does not publish.
+- When a pull request is merged into `master`, the **Release after merge** workflow bumps the
+  patch version (e.g. `0.1.0` → `0.1.1`), runs the release Gradle build, commits the version,
+  and creates tag `v0.1.1`.
+- Every `v*.*.*` tag runs **Publish image**, which pushes the image to `ghcr.io` with both the
+  version tag and `latest`, then removes release images older than the latest five versions.
+  The `snapshot` image is kept separately.
+
+```bash
+docker pull ghcr.io/gpcmol/otel_custom_agent:latest
+```
+
 # Configuration
 
 The agent reads its configuration from the XML file named by

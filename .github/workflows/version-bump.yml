@@ -1,0 +1,52 @@
+name: Release after merge
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Bump version in gradle.properties
+        id: bump
+        run: |
+          set -euo pipefail
+          CURRENT="$(grep '^version=' gradle.properties | cut -d= -f2 | sed 's/-SNAPSHOT$//')"
+          if [[ ! "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid current version: $CURRENT"
+            exit 1
+          fi
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          sed -i "s/^version=.*/version=${NEW_VERSION}/" gradle.properties
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Bumped ${CURRENT} -> ${NEW_VERSION}"
+
+      - name: Build release with Gradle
+        run: ./gradlew clean build -Pversion="${{ steps.bump.outputs.new_version }}"
+
+      - name: Commit, tag and push
+        run: |
+          set -euo pipefail
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore(release): bump version to v${NEW_VERSION}"
+          git tag "v${NEW_VERSION}"
+          git push origin HEAD:master
+          git push origin "v${NEW_VERSION}"
