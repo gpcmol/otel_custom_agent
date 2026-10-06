@@ -37,7 +37,11 @@ Chart.lock
 .claude/
 build/
 .opencode/
-gradle/
+# Keep the Gradle Wrapper in Git so clean CI checkouts can run ./gradlew.
+gradle/*
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 **/tls.crt
 **/tls.key
 telemetry.log

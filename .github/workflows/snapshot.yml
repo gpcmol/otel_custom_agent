@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build snapshot with Gradle
         run: ./gradlew clean build -Pversion=0.0.0-SNAPSHOT
 
