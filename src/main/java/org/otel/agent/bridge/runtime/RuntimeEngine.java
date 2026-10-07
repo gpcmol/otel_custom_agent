@@ -59,6 +59,14 @@ public final class RuntimeEngine {
 
   public void disable(final ClassLoader loader) {
     states.disable(loader);
+    applicationBridge.pushState(loader, RuntimeState.disabled());
+  }
+
+  public void disableAll() {
+    for (final ClassLoader loader : states.loaders()) {
+      disable(loader);
+    }
+    states.clearMatchers();
   }
 
   public boolean isInitialized(final ClassLoader loader) {

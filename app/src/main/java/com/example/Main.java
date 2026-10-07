@@ -14,7 +14,7 @@ import java.util.List;
 
 public class Main {
 
-    private static final int port = 8081;
+    private static final int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
     private static final ObjectMapper mapper = new ObjectMapper();
     // ponytail: one Garage holds customers (read-only) + parkedCars (mutable list written by park).
     // The agent instruments Garage.park as the configured exit point; the handler delegates every

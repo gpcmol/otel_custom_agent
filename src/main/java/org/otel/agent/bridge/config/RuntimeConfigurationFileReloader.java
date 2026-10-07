@@ -13,11 +13,14 @@ import org.otel.agent.bridge.ReloadResult;
 /** Polls a configuration file and retries failed updates on the next interval. */
 final class RuntimeConfigurationFileReloader {
   private final Function<String, ReloadResult> reload;
+  private final Runnable disable;
   private volatile ScheduledExecutorService executor;
   private volatile String lastConfiguration;
+  private volatile boolean missing;
 
-  RuntimeConfigurationFileReloader(final Function<String, ReloadResult> reload) {
+  RuntimeConfigurationFileReloader(final Function<String, ReloadResult> reload, final Runnable disable) {
     this.reload = reload;
+    this.disable = disable;
   }
 
   void start(final Path file, final long intervalSeconds) {
@@ -33,6 +36,19 @@ final class RuntimeConfigurationFileReloader {
 
   void markLoaded(final String configuration) {
     lastConfiguration = configuration;
+    missing = false;
+  }
+
+  void markMissing(final Path file, final String reason) {
+    if (!missing) {
+      missing = true;
+      disable.run();
+      logTransition(
+          System.Logger.Level.WARNING,
+          "instrumentation disabled because config file is unavailable: {0}: {1}",
+          file,
+          reason);
+    }
   }
 
   synchronized void stop() {
@@ -41,6 +57,7 @@ final class RuntimeConfigurationFileReloader {
       executor = null;
     }
     lastConfiguration = null;
+    missing = false;
   }
 
   private void poll(final Path file) {
@@ -48,14 +65,22 @@ final class RuntimeConfigurationFileReloader {
     try {
       configuration = Files.readString(file, StandardCharsets.UTF_8);
     } catch (final IOException exception) {
-      logFailure(file, exception.getMessage());
+      markMissing(file, exception.getMessage());
       return;
     }
-    if (configuration.equals(lastConfiguration)) return;
+    if (configuration.equals(lastConfiguration) && !missing) return;
 
     final ReloadResult result = reload.apply(configuration);
     if (result.succeeded()) {
       lastConfiguration = configuration;
+      if (missing) {
+        missing = false;
+        logTransition(
+            System.Logger.Level.INFO,
+            "instrumentation enabled again after config file became available: {0}",
+            file,
+            null);
+      }
     } else {
       logFailure(file, String.join("; ", result.failures()));
     }
@@ -73,5 +98,11 @@ final class RuntimeConfigurationFileReloader {
   private static void logFailure(final Path file, final String reason) {
     System.getLogger(RuntimeConfigurationFileReloader.class.getName())
         .log(System.Logger.Level.WARNING, "config file reload failed for {0}: {1}", file, reason);
+  }
+
+  private static void logTransition(
+      final System.Logger.Level level, final String message, final Path file, final String reason) {
+    System.getLogger(RuntimeConfigurationFileReloader.class.getName())
+        .log(level, message, file, reason);
   }
 }

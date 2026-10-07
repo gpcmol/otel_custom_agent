@@ -48,6 +48,11 @@ final class RuntimeStateStore {
     enabled.put(loader, Boolean.FALSE);
   }
 
+  synchronized void clearMatchers() {
+    rootNames = Set.of();
+    rootMethods = Map.of();
+  }
+
   synchronized RuntimeState state(final ClassLoader loader) {
     final WeakReference<RuntimeState> reference = states.get(loader);
     if (reference == null) return DISABLED;

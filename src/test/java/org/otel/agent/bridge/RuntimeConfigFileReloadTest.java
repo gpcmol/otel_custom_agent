@@ -1,6 +1,7 @@
 package org.otel.agent.bridge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -65,6 +66,22 @@ class RuntimeConfigFileReloadTest {
 
     Files.writeString(file, configXml("after"));
     awaitTeam("after");
+  }
+
+  @Test
+  void missingFileDisablesTelemetryAndInstrumentation() throws Exception {
+    final Path file = Files.createTempFile("otel-config", ".xml");
+    Files.writeString(file, configXml("before"));
+    RuntimeBridge.initializeForTesting(loader, file.toString(), "1");
+
+    Files.delete(file);
+
+    for (int attempt = 0; attempt < 20 && RuntimeBridge.state(loader).enabled(); attempt++) {
+      Thread.sleep(250);
+    }
+    assertFalse(RuntimeBridge.state(loader).enabled());
+    assertFalse(RuntimeBridge.enabled(loader));
+    assertTrue(RuntimeBridge.rootClassNames().isEmpty());
   }
 
   private String activeTeam() {

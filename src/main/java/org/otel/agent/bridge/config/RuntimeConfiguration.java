@@ -24,7 +24,7 @@ public final class RuntimeConfiguration {
     runtime = new RuntimeEngine();
     publisher = new RuntimeConfigurationPublisher(runtime);
     rootScanner = new ConfigurationRootScanner(runtime);
-    fileReloader = new RuntimeConfigurationFileReloader(publisher::reload);
+    fileReloader = new RuntimeConfigurationFileReloader(publisher::reload, this::disableAll);
   }
 
   public void publish(final ClassLoader loader, final CompiledConfiguration configuration) {
@@ -46,6 +46,11 @@ public final class RuntimeConfiguration {
     if (file != null) {
       startFileReload(file, intervalValue);
       if (initializeFile(loader, file)) return;
+      if (!Files.exists(file)) {
+        fileReloader.markMissing(file, "file does not exist");
+        return;
+      }
+      runtime.disable(loader);
     }
   }
 
@@ -74,6 +79,10 @@ public final class RuntimeConfiguration {
     publisher.reset();
   }
 
+  private void disableAll() {
+    runtime.disableAll();
+  }
+
   private boolean isInitialized(final ClassLoader loader) {
     return runtime.isInitialized(loader);
   }
@@ -93,7 +102,7 @@ public final class RuntimeConfiguration {
       fileReloader.markLoaded(xml);
       return true;
     } catch (final IOException exception) {
-      logFileFailure(file, exception.getMessage());
+      fileReloader.markMissing(file, exception.getMessage());
       return false;
     }
   }
